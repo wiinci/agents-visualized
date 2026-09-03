@@ -34,7 +34,7 @@ src/tooltip.ts         shared hover/focus/pin details popover
 src/util.ts            yieldToMain, rovingTabindex, responsive(), el()
 src/format.ts          numbers, colours, labels
 src/cost.ts            assumed-rate cost model: editable rates, Rates popover, persistence
-src/views/sankey.ts    1 · Loop Sankey (d3-sankey, loop-backs as return arcs)
+src/views/sankey.ts    1 · Loop Sankey (d3-sankey, loop-backs as return arcs, side info panel)
 src/views/hierarchy.ts 2 · Turn hierarchy (zoomable icicle, size = chars)
 src/views/context.ts   3 · Context growth small multiples
 src/views/delegation.ts4 · Delegation tree (d3-tree, radius = prompt chars)

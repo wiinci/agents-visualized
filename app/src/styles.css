@@ -178,6 +178,18 @@ svg path.sankey-linkhit:focus, svg path.sankey-linkhit:focus-visible { stroke: v
 .zoom-btn { inline-size: 2rem; block-size: 2rem; display: grid; place-items: center; font: inherit; font-size: 1rem; line-height: 1; border: 0; border-radius: calc(var(--radius) - 2px); background: transparent; color: var(--fg); cursor: pointer; }
 .zoom-btn:hover { background: var(--bg-3); }
 
+/* Info panel: a permanent rectangular column beside the chart (grid, never floating).
+   Under ~900px of panel width it stacks below the chart but stays visible. The content
+   swaps reuse the tooltip's .tip-head/.tip-title/.tip-badges/.tip-rows classes so panel
+   and tooltip render identically. */
+.sankey-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space); align-items: start; }
+.sankey-panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); padding: .75em .9em; font-size: var(--step--1); min-inline-size: 0; }
+.sankey-panel h3 { margin: 0 0 .5em; font-size: .78em; letter-spacing: .05em; text-transform: uppercase; color: var(--fg-muted); }
+/* Content swap: a 170ms opacity/translate entrance on the incoming body (see reduced-motion below). */
+.sankey-panel-body.is-swapping { animation: sankey-panel-swap 170ms ease-out; }
+@keyframes sankey-panel-swap { from { opacity: 0; transform: translateY(4px); } }
+@container panel (min-width: 900px) { .sankey-layout { grid-template-columns: minmax(0, 1fr) 18rem; } }
+
 .ic-cell { cursor: pointer; }
 .ic-cell rect { stroke: var(--bg); stroke-width: 1; }
 .ic-cell:hover rect { fill-opacity: 1 !important; }
@@ -273,6 +285,7 @@ svg path.sankey-linkhit:focus, svg path.sankey-linkhit:focus-visible { stroke: v
    motion is the redraw fade; icicle zoom transitions are skipped in JS via prefersReducedMotion(). */
 @media (prefers-reduced-motion: reduce) {
   .chart-host.is-fading { opacity: 1; transition: none; }
+  .sankey-panel-body.is-swapping { animation: none; }
 }
 
 /* ── Tokens & cost view (views/tokens.ts) ─────────────────────────────

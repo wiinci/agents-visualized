@@ -91,6 +91,16 @@ function metricOf(s: StageSizes | undefined, m: Metric): { mean: number; n: numb
     : { mean: s.promptN ? s.promptSum / s.promptN : 0, n: s.promptN };
 }
 
+/**
+ * Default info-panel node: the flow's origin — a node with no incoming links
+ * (the starting/user stage). Derived from the data, never hardcoded; when
+ * several source nodes exist, the leftmost rank (user/wake) wins, then data order.
+ */
+function originNode(nodes: FlowNode[], links: FlowLink[]): FlowNode | undefined {
+  const sources = nodes.filter((n) => !links.some((l) => l.target === n.id));
+  return sources.find((n) => rank(n.stage) === 0) ?? sources[0];
+}
+
 export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
   const { nodes, links } = ds.flows;
   container.replaceChildren();
@@ -132,7 +142,15 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
     zoomBar,
   );
   const frame = el('div', { class: 'sankey-frame' }, host);
-  container.append(note, toolbar, frame);
+  // ── Info panel: a permanent rectangular column beside the chart ─────────
+  // Always visible (never floating): the origin node's details by default, the
+  // hovered/focused node's details while interaction lasts. aria-live=polite
+  // announces content swaps; the heading gives the aside its accessible name.
+  const panelHeading = el('h3', { id: 'sankey-panel-title' }, 'Node details');
+  let panelBody = el('div', { class: 'sankey-panel-body' });
+  const panel = el('aside', { class: 'sankey-panel', 'aria-labelledby': 'sankey-panel-title', 'aria-live': 'polite' }, panelHeading, panelBody);
+  const layout = el('div', { class: 'sankey-layout' }, frame, panel);
+  container.append(note, toolbar, layout);
 
   // ── Legend: three adjacent circles, bottom-aligned, value labelled beneath ──
   const drawLegend = (max: number): void => {
@@ -392,19 +410,35 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
     svg.on('dblclick.zoom', null);
 
     makeRoving(host, '[data-tip]');
+    // Metric changes relabel the panel rows; re-render for the current state (no animation).
+    renderPanel(false);
   };
 
   // Highlight on hover/focus (delegated once on the persistent host; redraws replace only the SVG).
-  host.addEventListener('pointerover', (e) => { const t = (e.target as Element).closest('[data-tip]'); if (t) highlightFor(t); });
+  // The info panel follows the same marks: nodes swap its content, links leave it alone.
+  const nodeIdOf = (mark: Element | null): string | null =>
+    mark?.getAttribute('data-tip') === 'node' ? mark.getAttribute('data-key') : null;
+  host.addEventListener('pointerover', (e) => { const t = (e.target as Element).closest('[data-tip]'); if (t) highlightFor(t); showPanelFor(nodeIdOf(t)); });
   host.addEventListener('pointerout', (e) => {
     // Leaving a mark clears the hover highlight unless a mark holds keyboard focus (focus wins).
     const t = (e.target as Element).closest('[data-tip]');
     const focused = document.activeElement?.closest('[data-tip]');
     if (t && (!focused || !host.contains(focused))) clearHighlight();
     else if (focused) highlightFor(focused);
+    // Panel: when the pointer moves onto another node, pointerover swaps it in — skipping
+    // here avoids a default-view flash between adjacent marks; otherwise the keyboard-focused
+    // mark wins, and with neither, the panel reverts to the origin node.
+    const to = (e as PointerEvent).relatedTarget as Element | null;
+    if (nodeIdOf(to?.closest('[data-tip]') ?? null) === null) showPanelFor(nodeIdOf(focused ?? null));
   });
-  host.addEventListener('focusin', (e) => { const t = (e.target as Element).closest('[data-tip]'); if (t) highlightFor(t); });
-  host.addEventListener('focusout', (e) => { const nx = e.relatedTarget as Element | null; if (!nx || !nx.closest('[data-tip]')) clearHighlight(); });
+  host.addEventListener('focusin', (e) => { const t = (e.target as Element).closest('[data-tip]'); if (t) highlightFor(t); showPanelFor(nodeIdOf(t)); });
+  host.addEventListener('focusout', (e) => {
+    const nx = e.relatedTarget as Element | null;
+    if (!nx || !nx.closest('[data-tip]')) clearHighlight();
+    // Focus landing on a non-node mark (or nowhere) leaves no node to show → default view;
+    // node → node transitions are handled by focusin on the next mark.
+    if (nodeIdOf(nx?.closest('[data-tip]') ?? null) === null) showPanelFor(null);
+  });
 
   const zoomTo = (t: d3.ZoomTransform): void => {
     if (!zoom || !svgSel) return;
@@ -432,37 +466,73 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
     if (lastWidth) draw(lastWidth);
   };
 
+  // ── Node info content (shared by the tooltip and the info panel) ────────
+  const nodeContent = (n: FlowNode): TipContent => {
+    const inn = links.filter((l) => l.target === n.id).reduce((s, l) => s + l.value, 0);
+    const out = links.filter((l) => l.source === n.id).reduce((s, l) => s + l.value, 0);
+    const s = sizes.get(n.id);
+    const ctx = metricOf(s, 'context'), pr = metricOf(s, 'prompt');
+    const active = metricOf(s, metric);
+    return {
+      title: stageLabel(n.stage),
+      badges: [{ text: 'observed' }, { text: n.kind }, { text: `dot area = mean ${METRIC_LABEL[metric]}` }],
+      rows: [
+        ['stage', n.stage],
+        ['steps', fmtInt(n.count)],
+        [`mean ${METRIC_LABEL[metric]} (encoded)`, active.n ? `${fmtInt(Math.round(active.mean))} chars over ${fmtInt(active.n)} step${active.n === 1 ? '' : 's'}` : 'no data → hollow ring'],
+        ['mean context size', ctx.n ? `${fmtInt(Math.round(ctx.mean))} chars (n=${fmtInt(ctx.n)})` : '—'],
+        ['mean prompt size', pr.n ? `${fmtInt(Math.round(pr.mean))} chars (n=${fmtInt(pr.n)})` : '—'],
+        ['mean tokens (est.)', s && s.tokensN ? `${fmtInt(Math.round(s.tokensSum / s.tokensN))} est. tokens over ${fmtInt(s.tokensN)} step${s.tokensN === 1 ? '' : 's'}` : '—'],
+        ['aggregation', `mean per step; ${METRIC_HELP[metric]}`],
+        ['incoming transitions', fmtInt(inn)],
+        ['outgoing transitions', fmtInt(out)],
+        ['id', n.id],
+      ],
+      text: s?.ex.length ? {
+        body: s.ex.map((e, i) => `— example ${i + 1} —\n[${e.name}]${e.chars !== undefined ? ` · ${fmtChars(e.chars)}` : ''}\n${e.excerpt ?? '(no excerpt)'}`).join('\n\n'),
+        mono: false,
+        label: `Example steps (${s.ex.length}, from hierarchy)`,
+      } : undefined,
+    };
+  };
+
+  // ── Info panel rendering ────────────────────────────────────────────────
+  // Default = the origin node; hovering/focusing a node swaps in that node's
+  // details (the same nodeContent the tooltip composes, so panel and tip agree);
+  // hover-end/focus-out reverts. The full example text stays tooltip-only — the
+  // panel is a fixed-size summary, so it renders title, badges and metric rows.
+  const origin = originNode(nodes, links);
+  let panelNodeId: string | null = null;
+  const renderPanel = (animate: boolean): void => {
+    const n = (panelNodeId !== null ? nodeById.get(panelNodeId) : undefined) ?? origin;
+    if (!n) return;
+    const c = nodeContent(n);
+    const head = el('div', { class: 'tip-head' });
+    head.append(el('strong', { class: 'tip-title' }, c.title));
+    if (c.badges?.length) {
+      const b = el('div', { class: 'tip-badges' });
+      for (const bd of c.badges) b.append(el('span', { class: 'badge' }, bd.text));
+      head.append(b);
+    }
+    const dl = el('dl', { class: 'tip-rows' });
+    for (const [k, v] of c.rows) dl.append(el('dt', {}, k), el('dd', {}, v));
+    const next = el('div', { class: `sankey-panel-body${animate ? ' is-swapping' : ''}` }, head, dl);
+    panelBody.replaceWith(next);
+    panelBody = next;
+  };
+  const showPanelFor = (id: string | null): void => {
+    if (panelNodeId === id) return;
+    panelNodeId = id;
+    renderPanel(true);
+  };
+  renderPanel(false); // default view: the origin node
+
   // ── Tooltip content ─────────────────────────────────────────────────────
   tooltip().attach(host, (t): TipContent | null => {
     const key = t.getAttribute('data-key') ?? '';
     if (t.getAttribute('data-tip') === 'node') {
-      const n = nodeById.get(key); if (!n) return null;
-      const inn = links.filter((l) => l.target === n.id).reduce((s, l) => s + l.value, 0);
-      const out = links.filter((l) => l.source === n.id).reduce((s, l) => s + l.value, 0);
-      const s = sizes.get(n.id);
-      const ctx = metricOf(s, 'context'), pr = metricOf(s, 'prompt');
-      const active = metricOf(s, metric);
-      return {
-        title: stageLabel(n.stage),
-        badges: [{ text: 'observed' }, { text: n.kind }, { text: `dot area = mean ${METRIC_LABEL[metric]}` }],
-        rows: [
-          ['stage', n.stage],
-          ['steps', fmtInt(n.count)],
-          [`mean ${METRIC_LABEL[metric]} (encoded)`, active.n ? `${fmtInt(Math.round(active.mean))} chars over ${fmtInt(active.n)} step${active.n === 1 ? '' : 's'}` : 'no data → hollow ring'],
-          ['mean context size', ctx.n ? `${fmtInt(Math.round(ctx.mean))} chars (n=${fmtInt(ctx.n)})` : '—'],
-          ['mean prompt size', pr.n ? `${fmtInt(Math.round(pr.mean))} chars (n=${fmtInt(pr.n)})` : '—'],
-          ['mean tokens (est.)', s && s.tokensN ? `${fmtInt(Math.round(s.tokensSum / s.tokensN))} est. tokens over ${fmtInt(s.tokensN)} step${s.tokensN === 1 ? '' : 's'}` : '—'],
-          ['aggregation', `mean per step; ${METRIC_HELP[metric]}`],
-          ['incoming transitions', fmtInt(inn)],
-          ['outgoing transitions', fmtInt(out)],
-          ['id', n.id],
-        ],
-        text: s?.ex.length ? {
-          body: s.ex.map((e, i) => `— example ${i + 1} —\n[${e.name}]${e.chars !== undefined ? ` · ${fmtChars(e.chars)}` : ''}\n${e.excerpt ?? '(no excerpt)'}`).join('\n\n'),
-          mono: false,
-          label: `Example steps (${s.ex.length}, from hierarchy)`,
-        } : undefined,
-      };
+      const n = nodeById.get(key);
+      return n ? nodeContent(n) : null;
     }
     const [src, tgt] = key.split('->');
     const l = links.find((x) => x.source === src && x.target === tgt); if (!l || !src || !tgt) return null;
