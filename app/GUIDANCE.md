@@ -80,6 +80,16 @@ New seventh view `src/views/tokens.ts` (heatmap + cumulative line/stacked-area, 
 - With only 7 turns the line chart is sparse; the view says so, and labels x as turn index in start-time order — not wall-clock time, since turn durations differ wildly.
 - `sankey.ts` was deliberately not modified; its tooltips have no cost row yet.
 
+## Sankey info panel (2026-09-03)
+
+A permanent rectangular details column beside the chart (`.sankey-layout` grid, `.sankey-panel` aside). The default view is the flow's origin node — derived as the node with no incoming links (`originNode()`), leftmost rank when several exist — never hardcoded. Hovering or focusing a node swaps the panel to that node's details and mouseout/focus-out reverts to the origin. Design points:
+
+- **Content parity with the tooltip**: node content is composed once (`nodeContent()`) and rendered both by the shared tooltip and the panel, so the two never disagree. The full example-step text stays tooltip-only; the panel keeps title, badges and metric rows (fixed-size summary).
+- **A11y**: `aria-live="polite"` announces swaps; the `aside` is labelled by its own heading; focus follows the same roving-tabindex marks as the tooltip.
+- **Motion**: swaps are a 170ms opacity/translate entrance on the incoming body; `@media (prefers-reduced-motion: reduce)` disables the animation (case-by-case rule, no global kill switch).
+- **Interaction details**: node→node pointer moves let `pointerover` drive the swap (no default-view flash between adjacent marks); links never touch the panel; a keyboard-focused node wins over a simultaneously hovering pointer; the panel re-renders without animation on metric toggle and resize redraws.
+- **Responsive**: two columns (chart + 18rem panel) once the layout container is ≥900px wide (`@container panel`), stacked below the chart but still visible under that.
+
 ## Schema notes for the data owner (SCHEMA.md was not edited)
 
 Fields the app needed that SCHEMA.md does not provide; each has a workaround in `src/data.ts`:
