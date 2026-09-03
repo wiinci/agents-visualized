@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- dark-mode guide: inline (non-module) script so a pinned scheme applies before first paint (no FOUC).
+         The stylesheet also sets color-scheme on :root, so the inline style is what makes the pin win. -->
+    <script>
+      {
+        const s = localStorage.getItem('theme');
+        if (s === 'light' || s === 'dark') {
+          document.querySelector('meta[name="color-scheme"]').content = s;
+          document.documentElement.style.colorScheme = s;
+        }
+      }
+    </script>
+    <title>Agent loops — Obvious, visualized</title>
+    <meta name="description" content="D3 visualization of Obvious agent loops: turns, tool calls, delegation, context growth and the documented loop model." />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#views">Skip to visualizations</a>
+    <header class="site-header">
+      <div>
+        <h1>Agent loops, visualized</h1>
+        <p class="lede">How Obvious turns a request into reasoning, tool calls, delegation and a reply — from observed thread data, with sizes (characters, estimated tokens, context) in every encoding and every tooltip.</p>
+      </div>
+      <div class="header-tools">
+        <label class="theme-toggle">
+          <span class="visually-hidden">Colour scheme</span>
+          <!-- Two-state control (dark-mode guide): system setting, or the opposite pinned exactly. main.ts labels the second option. -->
+          <select id="theme" aria-label="Colour scheme">
+            <option value="auto">System colours</option>
+            <option value="dark" id="theme-pin">Dark</option>
+          </select>
+        </label>
+      </div>
+    </header>
+
+    <div id="banner" class="banner" role="status" hidden></div>
+
+    <section id="source" class="source" aria-labelledby="source-h">
+      <h2 id="source-h">Where this data came from</h2>
+      <p id="source-text" class="source-text">Loading…</p>
+      <dl id="source-meta" class="source-meta"></dl>
+    </section>
+
+    <main id="views">
+      <div class="tabs" role="tablist" aria-label="Visualizations" id="tablist"></div>
+      <div id="panels"></div>
+      <p class="kbd-help muted small">Keyboard: Tab into a chart, arrow keys move between nodes, Enter or Space pins the details panel, Esc closes it.</p>
+    </main>
+
+    <footer class="site-footer muted small">
+      <span id="footer-note"></span>
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

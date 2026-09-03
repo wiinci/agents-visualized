@@ -1,0 +1,306 @@
+/* ------------------------------------------------------------------------
+   Theme. `color-scheme` opts UA widgets/scrollbars into both schemes; every
+   colour is a light-dark() pair so the dark theme needs no duplicated rules
+   (dark-mode guide). The <select id="theme"> only flips `color-scheme` on
+   <html>, which light-dark() follows automatically.
+   ------------------------------------------------------------------------ */
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#ffffff, #0f1115);
+  --bg-2: light-dark(#f5f6f8, #171a21);
+  --bg-3: light-dark(#e9ebef, #20242d);
+  --fg: light-dark(#111318, #e8eaf0);
+  --fg-muted: light-dark(#5b6270, #a3abb8);
+  --border: light-dark(#d5d9e0, #2d323d);
+  --accent: light-dark(#2563eb, #7aa2ff);
+  --focus: light-dark(#0b57d0, #9cc0ff);
+  --warn-bg: light-dark(#fff4d6, #3a2f12);
+  --warn-fg: light-dark(#6b4e00, #ffd97a);
+  --err: light-dark(#b91c1c, #ff8a8a);
+  --shadow: 0 8px 28px light-dark(rgb(0 0 0 / 0.14), rgb(0 0 0 / 0.6));
+
+  /* Fluid type + space (fluid-scaling guide): clamp() with a viewport-based middle term */
+  --step--1: clamp(0.78rem, 0.74rem + 0.2vw, 0.88rem);
+  --step-0: clamp(0.95rem, 0.9rem + 0.25vw, 1.05rem);
+  --step-1: clamp(1.15rem, 1.05rem + 0.5vw, 1.4rem);
+  --step-2: clamp(1.5rem, 1.25rem + 1.2vw, 2.2rem);
+  --space: clamp(0.75rem, 0.5rem + 1vw, 1.5rem);
+  --radius: 8px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sankey-line: light-dark(#c9ccd3, #3d4350); /* resting hairline colour for Sankey links */
+}
+/* Fallback for engines without light-dark(): a plain dark override */
+@supports not (color: light-dark(#000, #fff)) {
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --bg-2: #171a21; --bg-3: #20242d; --fg: #e8eaf0; --fg-muted: #a3abb8; --border: #2d323d; --accent: #7aa2ff; --focus: #9cc0ff; --warn-bg: #3a2f12; --warn-fg: #ffd97a; --err: #ff8a8a; }
+  }
+}
+
+/* Box-sizing on the element types this app lays out — not a `*` reset (css guide: no global resets);
+   :where() keeps it at zero specificity so any later rule wins. */
+:where(body, div, section, header, footer, main, figure, figcaption, p, dl, dt, dd, table, th, td, button, select, pre, a, span, i, label) { box-sizing: border-box; }
+html { font-family: var(--font); font-size: var(--step-0); line-height: 1.5; -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); min-block-size: 100dvh; }
+h1 { font-size: var(--step-2); margin: 0 0 .25em; line-height: 1.15; }
+h2 { font-size: var(--step-1); margin: 0 0 .25em; }
+h3 { font-size: var(--step-0); margin: 1.5em 0 .5em; }
+p { margin: 0 0 .75em; }
+code { font-family: var(--mono); font-size: .92em; }
+.muted { color: var(--fg-muted); }
+.small { font-size: var(--step--1); }
+.error { color: var(--err); }
+.is-error { color: var(--err); font-weight: 600; }
+.visually-hidden { position: absolute !important; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Focus: always visible, 2px offset ring, on HTML controls and SVG nodes alike (accessibility guide) */
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+svg [tabindex]:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+svg [tabindex]:focus { outline: 3px solid var(--focus); outline-offset: 2px; } /* SVG focus-visible support is uneven; keep a plain :focus ring too */
+/* Stroke-only <path>s (ribbons, arcs, edges) get no box outline — Chrome renders it as a
+   stray line along the bbox edge. They signal focus with full opacity plus a glow instead. */
+svg path[tabindex]:focus, svg path[tabindex]:focus-visible { outline: none; stroke-opacity: 1; filter: drop-shadow(0 0 2px var(--focus)) drop-shadow(0 0 5px var(--focus)); }
+
+.skip-link { position: absolute; inset-block-start: -100px; inset-inline-start: var(--space); background: var(--accent); color: #fff; padding: .5em 1em; border-radius: var(--radius); z-index: 10; }
+.skip-link:focus { inset-block-start: var(--space); }
+
+/* Layout */
+.site-header, .source, main, .site-footer, .banner { inline-size: min(100% - 2 * var(--space), 1400px); margin-inline: auto; }
+.site-header { display: flex; flex-wrap: wrap; gap: var(--space); justify-content: space-between; align-items: flex-start; padding-block: calc(var(--space) * 1.5) var(--space); }
+.lede { max-inline-size: 70ch; color: var(--fg-muted); }
+.header-tools select { font: inherit; padding: .35em .6em; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-2); color: var(--fg); }
+
+.banner { border: 1px solid var(--border); background: var(--bg-2); padding: .6em .9em; border-radius: var(--radius); margin-block-end: var(--space); }
+.banner.is-warning { background: var(--warn-bg); color: var(--warn-fg); border-color: color-mix(in oklab, var(--warn-fg) 40%, transparent); }
+.banner.is-error { color: var(--err); }
+
+.source { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space); margin-block-end: var(--space); }
+.source-text { white-space: pre-wrap; font-size: var(--step--1); line-height: 1.55; max-block-size: 12lh; overflow: auto; padding: .5em .75em; background: var(--bg); border-radius: 6px; border: 1px solid var(--border); }
+.source-meta { display: grid; grid-template-columns: max-content 1fr; gap: .2em 1em; margin: .5em 0 0; font-size: var(--step--1); }
+.source-meta dt { color: var(--fg-muted); }
+.source-meta dd { margin: 0; overflow-wrap: anywhere; }
+
+/* Tabs */
+.tabs { display: flex; flex-wrap: wrap; gap: .25rem; border-block-end: 1px solid var(--border); margin-block-end: var(--space); }
+.tab { font: inherit; background: none; border: 0; border-block-end: 3px solid transparent; padding: .6em .9em; color: var(--fg-muted); cursor: pointer; border-radius: var(--radius) var(--radius) 0 0; }
+.tab:hover { background: var(--bg-2); color: var(--fg); }
+.tab[aria-selected="true"] { color: var(--fg); border-block-end-color: var(--accent); font-weight: 600; }
+
+/* Panels: container for size queries. Inactive panels are `hidden` (display:none) and
+   each view lays out lazily when first shown (ResizeObserver gating in util.ts), so
+   off-screen chart work is already deferred. `content-visibility: auto` is deliberately
+   NOT used here: the active panel sits in the initial viewport and the
+   defer-rendering-heavy-content guide forbids applying it above the fold. */
+.panel { container: panel / inline-size; padding-block-end: var(--space); }
+.view-host { min-block-size: 200px; }
+.view-note { max-inline-size: 90ch; color: var(--fg-muted); font-size: var(--step--1); }
+.blurb { margin-block-end: .5em; }
+.chart-host { inline-size: 100%; overflow-x: auto; }
+.chart-host svg { display: block; max-inline-size: 100%; block-size: auto; font-family: var(--font); }
+.chart-host.is-fading { opacity: .4; transition: opacity 120ms; }
+.toolbar { display: flex; gap: .75em; align-items: center; flex-wrap: wrap; margin-block: .5em; }
+.btn { font: inherit; font-size: var(--step--1); padding: .35em .8em; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-2); color: var(--fg); cursor: pointer; }
+.btn:hover { background: var(--bg-3); }
+
+.legend { display: flex; flex-wrap: wrap; gap: .4em 1em; font-size: var(--step--1); margin-block: .25em .5em; }
+.legend-item { display: inline-flex; align-items: center; gap: .4em; }
+.swatch { display: inline-block; inline-size: .8em; block-size: .8em; border-radius: 3px; background: var(--c, var(--fg-muted)); margin-inline-end: .4em; vertical-align: -1px; }
+.swatch-ring { background: var(--bg); border: 3px solid var(--fg-muted); }
+
+/* Small multiples grid: size-aware via container query (size-aware-styling guide) */
+.multiples { display: grid; gap: var(--space); grid-template-columns: 1fr; }
+@container panel (min-width: 760px) { .multiples { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container panel (min-width: 1200px) { .loops-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.multiple { margin: 0; border: 1px solid var(--border); border-radius: var(--radius); padding: .75em; background: var(--bg-2); min-inline-size: 0; }
+.multiple figcaption { margin-block-end: .5em; font-size: var(--step--1); }
+.multiple .chart-host { overflow: visible; }
+
+/* KPI strip */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75em; margin-block: .5em 1em; }
+.kpi { border: 1px solid var(--border); border-radius: var(--radius); padding: .75em; background: var(--bg-2); }
+.kpi-value { font-size: var(--step-1); font-weight: 700; font-variant-numeric: tabular-nums; }
+.kpi-label { color: var(--fg-muted); font-size: var(--step--1); }
+
+/* Tables */
+.data { border-collapse: collapse; inline-size: 100%; font-size: var(--step--1); font-variant-numeric: tabular-nums; }
+.data th, .data td { text-align: start; padding: .45em .6em; border-block-end: 1px solid var(--border); vertical-align: top; }
+.data thead th { color: var(--fg-muted); font-weight: 600; position: sticky; inset-block-start: 0; background: var(--bg); }
+.data tbody tr[data-tip] { cursor: pointer; }
+.data tbody tr[data-tip]:hover, .data tbody tr[data-tip]:focus-visible { background: var(--bg-2); }
+.bar-cell { display: inline-grid; grid-template-columns: 6rem auto; align-items: center; gap: .5em; }
+.bar { display: block; block-size: .7em; inline-size: var(--w); background: var(--c); border-radius: 2px; opacity: .8; }
+.facts { padding-inline-start: 1.2em; font-size: var(--step--1); }
+.facts li { margin-block-end: .4em; }
+
+/* Badges */
+.badge { display: inline-block; font-size: .75em; padding: .1em .55em; border-radius: 999px; background: color-mix(in oklab, var(--badge, var(--fg-muted)) 18%, transparent); color: var(--badge, var(--fg-muted)); border: 1px solid color-mix(in oklab, var(--badge, var(--fg-muted)) 45%, transparent); font-weight: 600; white-space: nowrap; }
+.badge-doc { --badge: #b45309; }
+
+/* ------------------------------------------------------------------------
+   SVG marks
+   ------------------------------------------------------------------------ */
+/* ── Sankey: dots + hairlines ─────────────────────────────────────────────
+   Links rest in light grey; a hovered/focused node or link pulls its connected
+   paths into the ink colour and fades everything else. Dots are stage-coloured;
+   AREA (√ scale) encodes the chosen size metric. */
+.sankey-frame { position: relative; }
+.sankey-host { overflow: hidden; cursor: grab; }
+.sankey-host:active { cursor: grabbing; }
+.sankey-svg { touch-action: none; }
+.sankey-link { stroke: var(--sankey-line); stroke-linecap: round; pointer-events: none; transition: stroke 120ms, opacity 120ms; }
+/* Invisible wider-stroke twins of the hairlines carry hover/focus (curved-stroke bbox
+   centres are off-path; QA finding). Transparent at rest; a translucent band on focus. */
+.sankey-linkhit { stroke: transparent; fill: none; pointer-events: stroke; cursor: pointer; }
+svg path.sankey-linkhit:focus, svg path.sankey-linkhit:focus-visible { stroke: var(--focus); stroke-opacity: .3; stroke-width: 8px; }
+.sankey-link.is-back { stroke-dasharray: 4 3; opacity: .55; } /* return edges recede until highlighted */
+.sankey-header { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; fill: var(--fg-muted); pointer-events: none; }
+.sankey-back-dot { fill: var(--sankey-line); pointer-events: none; }
+.sankey-svg.is-highlighting .sankey-link { opacity: .35; }
+.sankey-svg.is-highlighting .sankey-link.is-hi { opacity: 1; stroke: var(--fg); }
+.sankey-svg.is-highlighting .sankey-node:not(.is-hi) { opacity: .45; }
+.sankey-link:hover { stroke: var(--fg); }
+.sankey-node { cursor: pointer; transition: opacity 120ms; }
+.sankey-dot { stroke-width: 1.25; fill-opacity: .9; }
+.sankey-node.is-empty .sankey-dot { fill: none; stroke-dasharray: 2 1.5; } /* hollow ring = no size data */
+.sankey-node.is-hi .sankey-dot, .sankey-node:hover .sankey-dot { stroke: var(--fg); fill-opacity: 1; }
+.sankey-hit { fill: transparent; stroke: none; }
+.sankey-label { font-family: var(--mono); font-size: 12px; fill: var(--fg); pointer-events: none; }
+.sankey-svg.is-highlighting .sankey-node.is-hi .sankey-label { font-weight: 600; }
+
+.sankey-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: var(--space) 2rem; margin-block: .5rem .75rem; font-size: var(--step--1); color: var(--fg-muted); }
+.sankey-metric { display: inline-flex; align-items: center; gap: .5em; }
+.sankey-legend svg { display: block; overflow: visible; }
+.legend-circles circle { fill: none; stroke: var(--fg-muted); stroke-width: 1; }
+.legend-circles line { stroke: var(--border); stroke-dasharray: 2 2; }
+.legend-circles text { font-family: var(--mono); font-size: 10px; fill: var(--fg-muted); }
+
+.zoom-controls { margin-inline-start: auto; display: flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); box-shadow: 0 1px 4px rgb(0 0 0 / .08); }
+.zoom-btn { inline-size: 2rem; block-size: 2rem; display: grid; place-items: center; font: inherit; font-size: 1rem; line-height: 1; border: 0; border-radius: calc(var(--radius) - 2px); background: transparent; color: var(--fg); cursor: pointer; }
+.zoom-btn:hover { background: var(--bg-3); }
+
+.ic-cell { cursor: pointer; }
+.ic-cell rect { stroke: var(--bg); stroke-width: 1; }
+.ic-cell:hover rect { fill-opacity: 1 !important; }
+.ic-label { font-size: 11px; fill: var(--fg); pointer-events: none; }
+.ic-sub { fill: var(--fg-muted); font-size: 10px; }
+
+.axis text { fill: var(--fg-muted); font-size: 10px; }
+.axis line, .axis path { stroke: var(--border); }
+.axis-label { fill: var(--fg-muted); font-size: 10px; }
+.turn-rule { stroke: var(--fg-muted); stroke-dasharray: 3 3; }
+.ctx-point { cursor: pointer; }
+.ctx-point:hover { stroke: var(--fg); }
+
+.tree-link { stroke: var(--border); stroke-width: 1.5; }
+.tree-link.is-dispatch { stroke: var(--fg-muted); stroke-dasharray: 5 3; }
+.tree-node { cursor: pointer; }
+/* Glyph + label sit inside the node's role="button" group, so hovering them opens the same tooltip */
+.tree-glyph { font-size: 12px; }
+.tree-label { font-size: 12px; fill: var(--fg); }
+.tree-sub { fill: var(--fg-muted); font-size: 10px; }
+/* Halo so labels stay legible where dispatch links cross them */
+.tree-label, .tree-sub, .lm-label, .lm-edge-label, .sankey-label { paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+
+.lm-phase circle { fill: var(--bg-3); stroke: var(--fg-muted); stroke-width: 1.5; }
+.lm-phase:hover circle { fill: var(--bg-2); stroke: var(--fg); }
+.lm-phase { cursor: pointer; }
+.lm-num { font-size: 12px; font-weight: 700; fill: var(--fg); }
+.lm-label { font-size: 11px; fill: var(--fg); }
+.lm-edge { stroke: var(--fg-muted); stroke-width: 1.75; cursor: pointer; }
+.lm-edge.is-repeat { stroke: #b45309; stroke-dasharray: 5 4; }
+.lm-edge.is-exit { stroke: #15803d; }
+.lm-edge:hover, .lm-edge:focus { stroke-width: 3; }
+.lm-arrowhead { fill: var(--fg-muted); }
+.lm-arrowhead.is-repeat { fill: #b45309; }
+.lm-arrowhead.is-exit { fill: #15803d; }
+.lm-edge-label { font-size: 10px; fill: #b45309; pointer-events: none; }
+
+/* ------------------------------------------------------------------------
+   Tooltip / details popover (position-aware-tooltips guide, manual fallback).
+   With [popover] the element is in the top layer; we override the UA's
+   inset:0/margin:auto so JS can place it. Without popover support the same
+   element is toggled with .is-open and position:fixed.
+   ------------------------------------------------------------------------ */
+.tip {
+  position: fixed; inset: auto; margin: 0; padding: 0;
+  inline-size: max-content; max-inline-size: min(34rem, calc(100vw - 16px));
+  max-block-size: min(70vh, 640px); overflow: hidden;
+  background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow);
+  font-size: var(--step--1); line-height: 1.45;
+  display: none;
+}
+/* :where() so engines without :popover-open still keep the .is-open fallback (css guide: no duplicated fallback rules) */
+.tip:where(:popover-open, .is-open) { display: grid; grid-template-rows: auto 1fr; }
+
+/* Anchor positioning (position-aware-tooltips guide), primary path: the browser owns
+   placement — the tooltip opens to the SIDE of the .tip-anchor shim (tooltip.ts moves it
+   to the trigger's centre once per show) and self-regulates left-vs-right via
+   position-try-fallbacks, staying glued through scroll/resize. No JS positioning runs on
+   this path. The shim exists because SVG shapes cannot be anchor targets. The base .tip
+   `inset: auto` above is exactly the guide's popover reset; the anchored state re-adds a
+   margin as the gap. Arrow styling via @container anchored() is skipped — no arrow. */
+@supports (anchor-name: --a) {
+  /* Absolute in the document (tooltip.ts sets document coords) so the browser's scroll
+     tracking keeps the tooltip glued to marks in scrolled content. */
+  .tip-anchor { position: absolute; inline-size: 0; block-size: 0; anchor-name: --obvious-tip; }
+  .tip {
+    position-anchor: --obvious-tip;
+    position-area: right;
+    position-try-fallbacks: left, block-start, block-end;
+    align-self: anchor-center;
+    position-visibility: anchors-visible;
+    margin: 8px;
+  }
+}
+.tip.is-pinned { border-color: var(--accent); }
+.tip-close { justify-self: end; font: inherit; font-size: 1.2em; line-height: 1; border: 0; background: none; color: var(--fg-muted); padding: .35em .6em; cursor: pointer; }
+.tip-close:hover { color: var(--fg); }
+.tip-close[hidden] { display: none; }
+.tip-content { padding: .75em .9em .6em; overflow: auto; display: grid; gap: .5em; }
+.tip-head { display: grid; gap: .3em; }
+.tip-title { font-size: 1.05em; overflow-wrap: anywhere; }
+.tip-badges { display: flex; flex-wrap: wrap; gap: .3em; }
+.tip-rows { display: grid; grid-template-columns: max-content 1fr; gap: .15em .75em; margin: 0; }
+.tip-rows dt { color: var(--fg-muted); white-space: nowrap; }
+.tip-rows dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.tip-textlabel { font-weight: 600; margin-block-start: .25em; }
+.tip-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-block-size: 14lh; overflow: auto; padding: .5em .6em; background: var(--bg-2); border: 1px solid var(--border); border-radius: 6px; font-family: var(--font); font-size: .95em; }
+.tip-text.mono { font-family: var(--mono); font-size: .85em; }
+.tip-actions { display: flex; gap: .5em; }
+.tip-hint { margin: 0; font-size: .85em; }
+
+/* Reduced motion, case by case (css guide: no global `*` duration kill switch). The only CSS
+   motion is the redraw fade; icicle zoom transitions are skipped in JS via prefersReducedMotion(). */
+@media (prefers-reduced-motion: reduce) {
+  .chart-host.is-fading { opacity: 1; transition: none; }
+}
+
+/* ── Tokens & cost view (views/tokens.ts) ─────────────────────────────
+   Sequential colour scale is drawn in JS with light-dark() pairs so one ramp
+   serves both colour schemes (colour guide: no duplicated dark-mode rules). */
+.tok-chart .axis text { font-family: var(--mono); font-size: 10px; fill: var(--fg-muted); }
+.tok-rowlabel, .tok-colhead { font-family: var(--mono); font-size: 11px; fill: var(--fg-muted); }
+.tok-colhead { fill: var(--fg); }
+.tok-cell { stroke: var(--bg); stroke-width: 1px; cursor: pointer; }
+.tok-hit { cursor: crosshair; }
+.tok-crosshair { stroke: var(--fg-muted); stroke-dasharray: 3 3; stroke-opacity: .8; pointer-events: none; }
+.tok-endlabel { font-family: var(--mono); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+.tok-gridline { stroke-dasharray: none; }
+
+.tok-legend-row { display: flex; margin-block: .25em .5em; }
+.tok-legend { display: flex; align-items: baseline; gap: .5em; flex-wrap: wrap; }
+.tok-legend-bar { display: inline-block; inline-size: 180px; block-size: 12px; border-radius: 3px; border: 1px solid var(--border); align-self: center; }
+.tok-legend-tick { font-family: var(--mono); }
+
+/* ── Rates control (cost.ts): header button + popover form ───────────── */
+.rates-btn { font: inherit; padding: .35em .6em; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-2); color: var(--fg); cursor: pointer; }
+.rates-btn:hover { border-color: var(--fg-muted); }
+.rates-pop { inset: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); color: var(--fg); padding: .9em 1em; inline-size: min(320px, 90vw); box-shadow: 0 8px 30px rgb(0 0 0 / .25); }
+.rates-pop::backdrop { background: rgb(0 0 0 / .2); }
+.rates-intro { font-size: var(--step--1); margin-block: 0 .6em; }
+.rates-row { display: grid; grid-template-columns: 1fr auto; gap: .25em .75em; align-items: center; margin-block: .4em; }
+.rates-lab { display: flex; flex-direction: column; }
+.rates-lab label { font-weight: 600; }
+.rates-row input { font: inherit; font-family: var(--mono); padding: .3em .5em; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--fg); inline-size: 7em; }
+.rates-hint { margin-block: .6em 0; }
+.rates-reset { margin-block-start: .6em; }
