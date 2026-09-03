@@ -4,6 +4,8 @@ A D3 + TypeScript visualization of how Obvious agents actually run: turns, tool 
 
 **Live app:** https://0sd1wsphf5-4173.hosted.obvious.ai (also embedded in the project as the iframe artifact "Agent loops, visualized (live app)").
 
+See [How this report is built](docs/explainer.md) for a conference-length spec of the extraction → schema → D3 pipeline.
+
 Two pieces, one contract:
 
 | Path | What it is |
