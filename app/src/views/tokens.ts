@@ -1,8 +1,7 @@
 import * as d3 from 'd3';
 import type { LoopNode, LoopsDataset, TurnStat } from '../types';
 import { collectThreads, isStepKind } from '../data';
-import { agentColor, fmtCompact, fmtInt, fmtTime } from '../format';
-import { tooltip, type TipContent } from '../tooltip';
+import { agentColor, fmtCompact, fmtInt } from '../format';
 import { costOf, fmtCost, fmtRate, onRatesChange, rateFor } from '../cost';
 import { el, makeRoving, onResize } from '../util';
 
@@ -16,7 +15,7 @@ import { el, makeRoving, onResize } from '../util';
  *    (@chaytha/d3-heatmap + @d3/calendar conventions; legend after
  *    @d3/color-legend, as a CSS gradient of `light-dark()` stops).
  * 2. Cumulative line chart (x = global turn index, one line per agent) with a
- *    stacked-area toggle — nearest-point highlight and crosshair tooltip after
+ *    stacked-area toggle — nearest-point highlight and crosshair after
  *    @d3/multi-line-chart/2, stacking after @d3/tidy-stacked-area-chart.
  *
  * Numbers are per-turn token ESTIMATES (chars ÷ 4). Cost = estimated tokens ×
@@ -50,20 +49,13 @@ function deriveTurnAgentTokens(root: LoopNode): Map<string, number> {
   return out;
 }
 
-/** threadId → display name, and turnKey → its opening user-message node (for the tooltip excerpt). */
-function threadDirectory(ds: LoopsDataset): { names: Map<string, string>; prompts: Map<string, LoopNode> } {
+/** threadId → display name (stats.turns carries only the id). */
+function threadDirectory(ds: LoopsDataset): Map<string, string> {
   const names = new Map<string, string>();
-  const prompts = new Map<string, LoopNode>();
   for (const [tid, t] of collectThreads(ds.hierarchy)) {
     if (!names.has(tid)) names.set(tid, t.thread.name);
-    (t.thread.children ?? []).forEach((turn, i) => {
-      if (turn.kind !== 'turn') return;
-      const ti = turn.meta?.turnIndex ?? i;
-      const prompt = (turn.children ?? []).find((c) => c.kind === 'user-message');
-      if (prompt) prompts.set(`${tid}#${ti}`, prompt);
-    });
   }
-  return { names, prompts };
+  return names;
 }
 
 /** Column order: fixed palette order first, then any other agents in first-seen order. */
@@ -101,15 +93,13 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
   if (!turns.length) { container.append(el('p', { class: 'muted' }, 'No turns in this dataset.')); return; }
 
   const cells = deriveTurnAgentTokens(ds.hierarchy);
-  const { names, prompts } = threadDirectory(ds);
+  const names = threadDirectory(ds);
   const agents = agentColumns(ds);
   const valueOf = (t: TurnStat, agent: string): number => cells.get(cellKey(t.threadId, t.turnIndex, agent)) ?? 0;
   const val = (tokens: number, agent: string): number => (metric === 'cost' ? costOf(tokens, agent) : tokens);
   const fmtVal = (n: number): string => (metric === 'cost' ? fmtCost(n) : `≈${fmtInt(n)}`);
   const fmtValCompact = (n: number): string => (metric === 'cost' ? fmtCost(n) : `≈${fmtCompact(n)}`);
   const unitLabel = metric === 'cost' ? 'cost (est., assumed rate)' : 'tokens (est.)';
-
-  const turnName = (t: TurnStat): string => `${names.get(t.threadId) ?? t.threadId} · turn ${t.turnIndex + 1}`;
 
   // ── Toolbar: metric toggle + chart-mode toggle (select pattern used app-wide) ──
   const metricSel = el('select', { id: 'tok-metric', class: 'select' });
@@ -176,14 +166,14 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
           .attr('class', `tok-cell${v === 0 ? ' is-empty' : ''}`)
           .attr('x', x).attr('y', y).attr('width', Math.max(2, colW - 3)).attr('height', rowH - 4).attr('rx', 3)
           .attr('fill', v === 0 ? 'var(--bg-3)' : scale(shown))
-          .attr('data-tip', 'cell').attr('data-key', cellKey(t.threadId, t.turnIndex, a))
+          .attr('data-hit', 'cell').attr('data-key', cellKey(t.threadId, t.turnIndex, a))
           .attr('tabindex', -1).attr('role', 'button')
           .attr('aria-label', `${a} in turn ${t.turnIndex + 1} of ${name}: ${fmtVal(shown)}${metric === 'cost' ? ' (assumed rate)' : ' (est.)'}`);
       });
     });
 
     heatHost.append(svg.node()!);
-    makeRoving(heatHost, '[data-tip]');
+    makeRoving(heatHost, '[data-hit]');
   };
 
   // Sequential colour legend (@d3/color-legend): gradient bar + min/mid/max ticks.
@@ -199,33 +189,6 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
   };
   drawHeatLegend();
 
-  tooltip().attach(heatHost, (target): TipContent | null => {
-    const key = target.getAttribute('data-key') ?? '';
-    for (const t of turns) {
-      for (const a of agents) {
-        if (cellKey(t.threadId, t.turnIndex, a) !== key) continue;
-        const v = valueOf(t, a);
-        const shown = val(v, a);
-        const rows: [string, string][] = [
-          ['agent', a],
-          [unitLabel, metric === 'cost' ? `${fmtCost(shown)} · ${fmtRate(rateFor(a))}` : `≈${fmtInt(v)} (chars ÷ 4)`],
-          ['context at end of turn', `${fmtInt(t.contextCharsAtEnd)} chars`],
-          ['user prompt', `${fmtInt(t.userPromptChars)} chars`],
-          ['steps', fmtInt(t.steps)],
-          ['tool calls', fmtInt(t.toolCalls)],
-          ['started', fmtTime(t.startedAt)],
-        ];
-        if (v === 0) rows.splice(1, 0, ['note', `no observed steps by ${a} in this turn`]);
-        return {
-          title: turnName(t),
-          badges: [{ text: 'turn' }, { text: a, color: agentColor(a) }],
-          rows,
-          text: excerptFor(t),
-        };
-      }
-    }
-    return null;
-  });
   onResize(heatHost, drawHeat);
 
   // ── 2. Cumulative line / stacked-area chart ────────────────────────────
@@ -246,7 +209,7 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
     stacked
       ? 'Bands stack each agent\u2019s cumulative total, so the top edge is overall consumption. '
       : 'Each line is one agent\u2019s running total; labels sit at line ends where they fit. ',
-    'Hover, or focus a turn with the keyboard, for the per-turn delta and cumulative total per agent.'));
+    'Hover, or focus a turn with the keyboard, to highlight that turn\u2019s crosshair and per-agent points.'));
 
   // Agent legend (colour + text, never colour alone)
   const legend = el('div', { class: 'legend', role: 'list', 'aria-label': 'Agent colours' });
@@ -345,7 +308,7 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
         .attr('class', 'tok-hit').attr('x', m.left + (n > 1 ? step * i - step / 2 : 0)).attr('y', m.top)
         .attr('width', n > 1 ? step : width - m.left - m.right).attr('height', height - m.top - m.bottom)
         .attr('fill', 'transparent')
-        .attr('data-tip', 'turn').attr('data-key', String(i))
+        .attr('data-hit', 'turn').attr('data-key', String(i))
         .attr('tabindex', -1).attr('role', 'button')
         .attr('aria-label', `Turn ${i + 1} (${names.get(t.threadId) ?? t.threadId}): total ${fmtVal(totals[i] ?? 0)} ${metric === 'cost' ? '(assumed rate)' : '(est.)'}`);
     });
@@ -371,26 +334,9 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
       });
       lineHost.addEventListener('focusout', () => hideFocusFn?.());
     }
-    makeRoving(lineHost, '[data-tip]');
+    makeRoving(lineHost, '[data-hit]');
   };
   onResize(lineHost, drawLine);
-
-  tooltip().attach(lineHost, (target): TipContent | null => {
-    if (target.getAttribute('data-tip') !== 'turn') return null;
-    const i = Number(target.getAttribute('data-key'));
-    const t = turns[i];
-    if (!t) return null;
-    const rows: [string, string][] = [
-      ...series.map((s): [string, string] => [
-        s.agent,
-        `+${fmtVal(s.delta[i] ?? 0)}${metric === 'cost' ? '' : ' (est.)'} · cumulative ${fmtVal(s.cum[i] ?? 0)}`,
-      ]),
-      ['all agents', `+${fmtVal(totals[i] ?? 0)}${metric === 'cost' ? '' : ' (est.)'} · cumulative ${fmtVal(d3.sum(series, (s) => s.cum[i] ?? 0))}`],
-      ['started', fmtTime(t.startedAt)],
-    ];
-    if (metric === 'cost') rows.unshift(['note', `cost = est. tokens × ${fmtRate(rateFor(t.agent))} (assumed; not provider data)`]);
-    return { title: `${turnName(t)} (#${i + 1} globally)`, badges: [{ text: 'turn' }], rows, text: excerptFor(t) };
-  });
 
   // Honest-labelling footnote (also the schema gap note: stats.turns carries no thread display name).
   container.append(el('p', { class: 'view-note muted small' },
@@ -402,10 +348,4 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
 
   // Restore focus to the toggle the reader just used (re-render recreated the DOM).
   if (focusAfter) { document.getElementById(focusAfter === 'metric' ? 'tok-metric' : 'tok-mode')?.focus(); focusAfter = null; }
-
-  function excerptFor(t: TurnStat): TipContent['text'] {
-    const p = prompts.get(`${t.threadId}#${t.turnIndex}`);
-    const body = p?.meta?.excerpt ?? '';
-    return body ? { body, mono: false, label: 'User prompt that opened this turn (excerpt)' } : undefined;
-  }
 }

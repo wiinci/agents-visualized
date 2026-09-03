@@ -1,5 +1,5 @@
 {
-  "base": "http://127.0.0.1:4173/",
+  "base": "http://[::1]:4173/",
   "banner": {
     "hidden": false,
     "text": "Live data. Loaded data/loops.json."
@@ -16,388 +16,72 @@
       "view": "sankey",
       "svgCount": 2,
       "tableCount": 0,
-      "tipTargets": 58,
-      "renderErrors": 0,
-      "hoverTipOpen": true,
-      "focusTipOpen": true,
-      "arrowMoved": true,
-      "pinOpen": true,
-      "escClosed": false
+      "tipMarks": 0,
+      "hitMarks": 58,
+      "renderErrors": 0
     },
     {
       "view": "hierarchy",
       "svgCount": 1,
       "tableCount": 0,
-      "tipTargets": 417,
-      "renderErrors": 0,
-      "hoverTipOpen": true,
-      "focusTipOpen": true,
-      "arrowMoved": true,
-      "pinOpen": true,
-      "escClosed": false
+      "tipMarks": 0,
+      "hitMarks": 417,
+      "renderErrors": 0
     },
     {
       "view": "context",
       "svgCount": 4,
       "tableCount": 0,
-      "tipTargets": 407,
-      "renderErrors": 0,
-      "hoverTipOpen": true,
-      "focusTipOpen": true,
-      "arrowMoved": true,
-      "pinOpen": true,
-      "escClosed": false
+      "tipMarks": 0,
+      "hitMarks": 407,
+      "renderErrors": 0
     },
     {
       "view": "delegation",
       "svgCount": 1,
       "tableCount": 0,
-      "tipTargets": 8,
-      "renderErrors": 0,
-      "hoverTipOpen": true,
-      "focusTipOpen": true,
-      "arrowMoved": true,
-      "pinOpen": true,
-      "escClosed": false
+      "tipMarks": 0,
+      "hitMarks": 8,
+      "renderErrors": 0
     },
     {
       "view": "loops",
       "svgCount": 5,
       "tableCount": 0,
-      "tipTargets": 56,
-      "renderErrors": 0,
-      "hoverTipOpen": false,
-      "focusTipOpen": true,
-      "arrowMoved": true,
-      "pinOpen": true,
-      "escClosed": false
+      "tipMarks": 0,
+      "hitMarks": 56,
+      "renderErrors": 0
     },
     {
       "view": "summary",
       "svgCount": 0,
       "tableCount": 3,
-      "tipTargets": 7,
-      "renderErrors": 0,
-      "hoverTipOpen": true,
-      "focusTipOpen": true,
-      "arrowMoved": true,
-      "pinOpen": true,
-      "escClosed": false
+      "tipMarks": 0,
+      "hitMarks": 0,
+      "renderErrors": 0
+    },
+    {
+      "view": "tokens",
+      "svgCount": 2,
+      "tableCount": 0,
+      "tipMarks": 0,
+      "hitMarks": 28,
+      "renderErrors": 0
     }
   ],
-  "tooltipKinds": {
-    "thread": {
-      "seen": 3,
-      "size": 3,
-      "context": 0,
-      "prompt": 0,
-      "text": 0,
-      "sampleTitle": "Agent Loops D3 Visualization",
-      "sampleRows": {
-        "kind": "thread",
-        "agent": "orchestrator",
-        "status": "completed",
-        "size": "127,197 chars · ≈31,800 tokens (est.)",
-        "created": "2026-09-03 15:36:49Z",
-        "thread": "th_SMvQXb8b",
-        "id": "th_SMvQXb8b",
-        "depth": "1",
-        "descendants": "405",
-        "path": "agents-visualized › Agent Loops D3 Visualization"
-      }
-    },
-    "worker thread": {
-      "seen": 6,
-      "size": 6,
-      "context": 0,
-      "prompt": 6,
-      "text": 0,
-      "sampleTitle": "Integrate live data, verify against Modern Web Guidance, and host the visualization",
-      "sampleRows": {
-        "kind": "worker thread",
-        "agent": "worker:agent",
-        "status": "running",
-        "assignee": "agent",
-        "size": "28,798 chars · ≈7,200 tokens (est.)",
-        "prompt size": "3,632 chars",
-        "created": "2026-09-03 16:23:52Z",
-        "thread": "th_PcWp9LV3",
-        "id": "th_PcWp9LV3",
-        "depth": "1",
-        "descendants": "11",
-        "path": "agents-visualized › Integrate live data, verify against Modern Web Guidance, and host the visualization"
-      }
-    },
-    "turn": {
-      "seen": 6,
-      "size": 6,
-      "context": 6,
-      "prompt": 6,
-      "text": 0,
-      "sampleTitle": "turn 2: Use TypeScript and https://developer.chrome.com/docs/modern-",
-      "sampleRows": {
-        "kind": "turn",
-        "agent": "orchestrator",
-        "size": "57,369 chars · ≈14,343 tokens (est.)",
-        "context at this point": "13,448 chars · ≈3,362 tokens (est.)",
-        "prompt size": "78 chars",
-        "duration": "391,468 ms",
-        "created": "2026-09-03 15:41:42Z",
-        "thread": "th_SMvQXb8b",
-        "turn": "#2",
-        "id": "th_SMvQXb8b/turn-1",
-        "depth": "2",
-        "descendants": "30",
-        "path": "agents-visualized › Agent Loops D3 Visualization › turn 2: Use TypeScript and https://developer.chrome.com/docs/modern-"
-      }
-    },
-    "reasoning": {
-      "seen": 90,
-      "size": 90,
-      "context": 90,
-      "prompt": 0,
-      "text": 90,
-      "sampleTitle": "reasoning",
-      "sampleRows": {
-        "kind": "reasoning",
-        "agent": "orchestrator",
-        "role": "assistant",
-        "size": "361 chars · ≈91 tokens (est.)",
-        "context at this point": "698 chars · ≈175 tokens (est.)",
-        "created": "2026-09-03 15:40:35Z",
-        "thread": "th_SMvQXb8b",
-        "turn": "#1 · step 1",
-        "message": "msg_B1cJidzhqIPc",
-        "id": "th_SMvQXb8b/turn-0/step-1",
-        "depth": "3",
-        "descendants": "0",
-        "path": "agents-visualized › Agent Loops D3 Visualization › turn 1: In the \"agents-visualized\" project, create a D3.js data visu › reasoning"
-      }
-    },
-    "assistant text": {
-      "seen": 48,
-      "size": 48,
-      "context": 48,
-      "prompt": 0,
-      "text": 48,
-      "sampleTitle": "assistant text",
-      "sampleRows": {
-        "kind": "assistant text",
-        "agent": "orchestrator",
-        "role": "assistant",
-        "size": "181 chars · ≈46 tokens (est.)",
-        "context at this point": "1,059 chars · ≈265 tokens (est.)",
-        "created": "2026-09-03 15:40:35Z",
-        "thread": "th_SMvQXb8b",
-        "turn": "#1 · step 2",
-        "message": "msg_B1cJidzhqIPc",
-        "id": "th_SMvQXb8b/turn-0/step-2",
-        "depth": "3",
-        "descendants": "0",
-        "path": "agents-visualized › Agent Loops D3 Visualization › turn 1: In the \"agents-visualized\" project, create a D3.js data visu › assistant text"
-      }
-    },
-    "tool call": {
-      "seen": 180,
-      "size": 180,
-      "context": 180,
-      "prompt": 180,
-      "text": 180,
-      "sampleTitle": "tool: obvious-sdk",
-      "sampleRows": {
-        "kind": "tool call",
-        "agent": "orchestrator",
-        "role": "assistant",
-        "tool": "obvious-sdk",
-        "summary": "Checking whether this is the agents-visualized project",
-        "size": "105 chars · ≈27 tokens (est.)",
-        "context at this point": "1,240 chars · ≈310 tokens (est.)",
-        "prompt size": "105 chars",
-        "created": "2026-09-03 15:40:35Z",
-        "thread": "th_SMvQXb8b",
-        "turn": "#1 · step 3",
-        "message": "msg_B1cJidzhqIPc",
-        "call id": "toolu_01PkEJK4bGfYFT1qDSi1E7dz",
-        "id": "th_SMvQXb8b/turn-0/step-3",
-        "depth": "3",
-        "descendants": "0",
-        "path": "agents-visualized › Agent Loops D3 Visualization › turn 1: In the \"agents-visualized\" project, create a D3.js data visu › tool: obvious-sdk"
-      }
-    },
-    "tool result": {
-      "seen": 179,
-      "size": 179,
-      "context": 179,
-      "prompt": 0,
-      "text": 179,
-      "sampleTitle": "result: obvious-sdk",
-      "sampleRows": {
-        "kind": "tool result",
-        "agent": "orchestrator",
-        "role": "tool",
-        "tool": "obvious-sdk",
-        "size": "495 chars · ≈124 tokens (est.)",
-        "context at this point": "2,134 chars · ≈534 tokens (est.)",
-        "duration": "32,687 ms",
-        "created": "2026-09-03 15:41:08Z",
-        "thread": "th_SMvQXb8b",
-        "turn": "#1 · step 6",
-        "message": "msg_7HzqBfpri3Qb",
-        "call id": "toolu_01PkEJK4bGfYFT1qDSi1E7dz",
-        "id": "th_SMvQXb8b/turn-0/step-6",
-        "depth": "3",
-        "descendants": "0",
-        "path": "agents-visualized › Agent Loops D3 Visualization › turn 1: In the \"agents-visualized\" project, create a D3.js data visu › result: obvious-sdk"
-      }
-    },
-    "user message": {
-      "seen": 18,
-      "size": 18,
-      "context": 18,
-      "prompt": 18,
-      "text": 18,
-      "sampleTitle": "user message",
-      "sampleRows": {
-        "kind": "user message",
-        "agent": "user",
-        "role": "user",
-        "size": "78 chars · ≈20 tokens (est.)",
-        "context at this point": "13,448 chars · ≈3,362 tokens (est.)",
-        "prompt size": "78 chars",
-        "created": "2026-09-03 15:41:42Z",
-        "thread": "th_SMvQXb8b",
-        "turn": "#2 · step 0",
-        "message": "09f4c289-de05-4988-a126-63174d4c7616",
-        "id": "th_SMvQXb8b/turn-1/step-0",
-        "depth": "3",
-        "descendants": "0",
-        "path": "agents-visualized › Agent Loops D3 Visualization › turn 2: Use TypeScript and https://developer.chrome.com/docs/modern- › user message"
-      }
-    },
-    "project": {
-      "seen": 1,
-      "size": 1,
-      "context": 0,
-      "prompt": 0,
-      "text": 0,
-      "sampleTitle": "delegation",
-      "sampleRows": {
-        "kind": "project",
-        "agent": "orchestrator",
-        "size": "0 chars · ≈0 tokens (est.)",
-        "id": "prj_Migpa1ZZ/delegation",
-        "children": "1"
-      }
-    },
-    "task": {
-      "seen": 4,
-      "size": 4,
-      "context": 0,
-      "prompt": 3,
-      "text": 4,
-      "sampleTitle": "agents-visualized: D3 + TypeScript visualization of Obvious agent loops",
-      "sampleRows": {
-        "kind": "task",
-        "agent": "orchestrator",
-        "status": "pending",
-        "assignee": "Orchestrator",
-        "size": "383 chars · ≈96 tokens (est.)",
-        "created": "2026-09-03 15:48:13Z",
-        "id": "todo_m2hbo0zI",
-        "children": "3"
-      }
-    },
-    "(sankey:link)": {
-      "seen": 43,
-      "size": 0,
-      "context": 0,
-      "prompt": 0,
-      "text": 38,
-      "sampleTitle": "reason → respond",
-      "sampleRows": {
-        "transitions": "20",
-        "link kind": "sequence",
-        "layout": "forward link, 1–5px √-scaled by count"
-      }
-    },
-    "(sankey:node)": {
-      "seen": 15,
-      "size": 0,
-      "context": 0,
-      "prompt": 0,
-      "text": 0,
-      "sampleTitle": "user",
-      "sampleRows": {
-        "stage": "user",
-        "steps": "7",
-        "mean context size (encoded)": "26,344 chars over 7 steps",
-        "mean context size": "26,344 chars (n=7)",
-        "mean prompt size": "2,610 chars (n=7)",
-        "aggregation": "mean per step; cumulative context (chars) at the moment each step of that stage ran",
-        "incoming transitions": "0",
-        "outgoing transitions": "7",
-        "id": "stage:user"
-      }
-    },
-    "next": {
-      "seen": 21,
-      "size": 0,
-      "context": 0,
-      "prompt": 0,
-      "text": 0,
-      "sampleTitle": "receive → orient",
-      "sampleRows": {
-        "loop": "Turn loop",
-        "kind": "next",
-        "label": "—",
-        "from": "turn:receive",
-        "to": "turn:orient"
-      }
-    },
-    "repeat": {
-      "seen": 4,
-      "size": 0,
-      "context": 0,
-      "prompt": 0,
-      "text": 0,
-      "sampleTitle": "observe → act",
-      "sampleRows": {
-        "loop": "Turn loop",
-        "kind": "repeat",
-        "label": "act↔observe",
-        "from": "turn:observe",
-        "to": "turn:act"
-      }
-    },
-    "exit": {
-      "seen": 4,
-      "size": 0,
-      "context": 0,
-      "prompt": 0,
-      "text": 0,
-      "sampleTitle": "respond → receive",
-      "sampleRows": {
-        "loop": "Turn loop",
-        "kind": "exit",
-        "label": "closing message",
-        "from": "turn:respond",
-        "to": "turn:receive"
-      }
-    },
-    "(loops:phase)": {
-      "seen": 27,
-      "size": 0,
-      "context": 0,
-      "prompt": 0,
-      "text": 23,
-      "sampleTitle": "receive",
-      "sampleRows": {
-        "loop": "Turn loop",
-        "phase id": "turn:receive",
-        "description": "user message",
-        "outgoing": "next → orient"
-      }
-    }
+  "sankeyPanel": {
+    "present": true,
+    "ariaLive": "polite",
+    "visible": true,
+    "besideChart": true,
+    "panelTrackPx": 403.188,
+    "expectedPx": 403.20000000000005,
+    "defaultNode": "user",
+    "hoverNode": "reason",
+    "noTooltipOnHover": true,
+    "revertsOnMouseout": true,
+    "focusNode": "reason",
+    "stackedBelowBreakpoint": true
   },
   "errors": []
 }

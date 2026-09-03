@@ -1,26 +1,21 @@
 import * as d3 from 'd3';
 import type { LoopModelLoop, LoopPhase, LoopsDataset } from '../types';
-import { countKinds } from '../data';
-import { fmtInt } from '../format';
-import { tooltip, type TipContent } from '../tooltip';
 import { el, makeRoving, onResize } from '../util';
 
 /**
  * The five canonical loops from `loopModel`, each drawn as a directed cycle:
  * phases on a circle, `next`/`exit` edges as arcs between phases, `repeat`
  * edges (back to an earlier phase or to self) as dashed loops. Clearly labelled
- * "documented model" — the observed data lives in the other views. Each phase
- * tooltip bridges the two by listing the observed node kinds it maps to and how
- * many such nodes exist in the hierarchy.
+ * "documented model" — the observed data lives in the other views; each phase's
+ * aria-label carries its description.
  */
 export function renderLoopModel(container: HTMLElement, ds: LoopsDataset): void {
   container.replaceChildren();
-  const kinds = countKinds(ds.hierarchy);
   const loops = ds.loopModel.loops;
   container.append(el('p', { class: 'view-note' },
     el('strong', {}, 'Documented model, not observed data. '),
     `These ${loops.length} cycles come from loopModel in the dataset (Obvious's documented turn, delegation, skill, memory and human-in-the-loop loops). `,
-    `Solid arrows = next / exit; dashed arrows = repeat. Phase tooltips list which observed node kinds (views 1–4) they correspond to.`));
+    `Solid arrows = next / exit; dashed arrows = repeat.`));
   const grid = el('div', { class: 'multiples loops-grid' });
   container.append(grid);
 
@@ -31,28 +26,6 @@ export function renderLoopModel(container: HTMLElement, ds: LoopsDataset): void 
     fig.append(host);
     grid.append(fig);
 
-    const phaseById = new Map(loop.phases.map((p) => [p.id, p]));
-    const tipFor = (t: Element): TipContent | null => {
-      const key = t.getAttribute('data-key') ?? '';
-      if (t.getAttribute('data-tip') === 'phase') {
-        const p = phaseById.get(key); if (!p) return null;
-        const observed = p.observedKinds.map((k) => `${k}: ${fmtInt(kinds.get(k) ?? 0)} observed`).join('\n');
-        return {
-          title: p.name,
-          badges: [{ text: 'documented phase' }],
-          rows: [['loop', loop.name], ['phase id', p.id], ['description', p.description],
-            ['outgoing', loop.edges.filter((e) => e.from === p.id).map((e) => `${e.kind} → ${phaseById.get(e.to)?.name ?? e.to}${e.label ? ` (${e.label})` : ''}`).join('; ') || '—']],
-          text: p.observedKinds.length ? { body: observed, mono: false, label: 'Maps to observed node kinds (counts from hierarchy)' } : undefined,
-        };
-      }
-      const e = loop.edges[Number(key)]; if (!e) return null;
-      return {
-        title: `${phaseById.get(e.from)?.name ?? e.from} → ${phaseById.get(e.to)?.name ?? e.to}`,
-        badges: [{ text: 'documented edge' }, { text: e.kind }],
-        rows: [['loop', loop.name], ['kind', e.kind], ['label', e.label ?? '—'], ['from', e.from], ['to', e.to]],
-      };
-    };
-    tooltip().attach(host, tipFor);
     onResize(host, (w) => drawLoop(host, loop, Math.max(240, w)));
   }
 }
@@ -102,7 +75,7 @@ function drawLoop(host: HTMLElement, loop: LoopModelLoop, width: number): void {
       const cxp = mx + (toCenter.x / len) * dist * bulge, cyp = my + (toCenter.y / len) * dist * bulge;
       return `M${sx},${sy} Q${cxp},${cyp} ${tx},${ty}`;
     })
-    .attr('data-tip', 'edge').attr('data-key', (d) => String(d.i))
+    .attr('data-hit', 'edge').attr('data-key', (d) => String(d.i))
     .attr('tabindex', -1).attr('role', 'button')
     .attr('aria-label', (d) => `${d.e.kind} edge from ${loop.phases[idx.get(d.e.from) ?? 0]?.name ?? d.e.from} to ${loop.phases[idx.get(d.e.to) ?? 0]?.name ?? d.e.to}${d.e.label ? `, ${d.e.label}` : ''}`);
   // Edge labels (repeat edges only, to keep the diagram readable)
@@ -116,7 +89,7 @@ function drawLoop(host: HTMLElement, loop: LoopModelLoop, width: number): void {
   const node = svg.append('g').selectAll<SVGGElement, LoopPhase>('g').data(loop.phases).join('g')
     .attr('class', 'lm-phase')
     .attr('transform', (_, i) => `translate(${pos(i).x},${pos(i).y})`)
-    .attr('data-tip', 'phase').attr('data-key', (p) => p.id)
+    .attr('data-hit', 'phase').attr('data-key', (p) => p.id)
     .attr('tabindex', -1).attr('role', 'button')
     .attr('aria-label', (p) => `${p.name}: ${p.description}`);
   node.append('circle').attr('r', nodeR);
@@ -126,5 +99,5 @@ function drawLoop(host: HTMLElement, loop: LoopModelLoop, width: number): void {
     .text((p) => p.name);
 
   host.append(svg.node()!);
-  makeRoving(host, '[data-tip]');
+  makeRoving(host, '[data-hit]');
 }

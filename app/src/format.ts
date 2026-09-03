@@ -49,13 +49,6 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   task: 'task', 'worker-thread': 'worker thread', wake: 'wake', phase: 'phase (documented)',
 };
 
-/** Kinds whose text is code/JSON — rendered monospace in tooltips. */
-export function isCodeLike(node: LoopNode): boolean {
-  if (node.kind === 'tool-call' || node.kind === 'tool-result') return true;
-  const t = node.meta?.fullText ?? node.meta?.excerpt ?? '';
-  return /^\s*[[{]/.test(t);
-}
-
 export function stageLabel(stage: string): string {
   return stage.startsWith('tool:') ? `tool: ${stage.slice(5)}` : stage;
 }
@@ -74,7 +67,7 @@ export function stageColor(stage: string): string {
   }
 }
 
-/** Short accessible name for an SVG node (screen readers get the tooltip as description). */
+/** Short accessible name for an SVG node (the primary textual description of SVG marks). */
 export function nodeAriaLabel(node: LoopNode): string {
   const m = node.meta;
   const bits = [node.name, KIND_LABEL[node.kind] ?? node.kind];

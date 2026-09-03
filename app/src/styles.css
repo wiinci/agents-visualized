@@ -125,8 +125,8 @@ svg path[tabindex]:focus, svg path[tabindex]:focus-visible { outline: none; stro
 .data { border-collapse: collapse; inline-size: 100%; font-size: var(--step--1); font-variant-numeric: tabular-nums; }
 .data th, .data td { text-align: start; padding: .45em .6em; border-block-end: 1px solid var(--border); vertical-align: top; }
 .data thead th { color: var(--fg-muted); font-weight: 600; position: sticky; inset-block-start: 0; background: var(--bg); }
-.data tbody tr[data-tip] { cursor: pointer; }
-.data tbody tr[data-tip]:hover, .data tbody tr[data-tip]:focus-visible { background: var(--bg-2); }
+.data tbody tr[tabindex] { cursor: default; }
+.data tbody tr[tabindex]:hover, .data tbody tr[tabindex]:focus-visible { background: var(--bg-2); }
 .bar-cell { display: inline-grid; grid-template-columns: 6rem auto; align-items: center; gap: .5em; }
 .bar { display: block; block-size: .7em; inline-size: var(--w); background: var(--c); border-radius: 2px; opacity: .8; }
 .facts { padding-inline-start: 1.2em; font-size: var(--step--1); }
@@ -179,16 +179,23 @@ svg path.sankey-linkhit:focus, svg path.sankey-linkhit:focus-visible { stroke: v
 .zoom-btn:hover { background: var(--bg-3); }
 
 /* Info panel: a permanent rectangular column beside the chart (grid, never floating).
-   Under ~900px of panel width it stacks below the chart but stays visible. The content
-   swaps reuse the tooltip's .tip-head/.tip-title/.tip-badges/.tip-rows classes so panel
-   and tooltip render identically. */
+   Under ~900px of panel width it stacks below the chart but stays visible. 24rem keeps
+   the ten metric rows readable without crowding the chart at the 900–1100px range
+   (verified against screenshots at 900px and 1280px). */
 .sankey-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space); align-items: start; }
 .sankey-panel { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); padding: .75em .9em; font-size: var(--step--1); min-inline-size: 0; }
 .sankey-panel h3 { margin: 0 0 .5em; font-size: .78em; letter-spacing: .05em; text-transform: uppercase; color: var(--fg-muted); }
 /* Content swap: a 170ms opacity/translate entrance on the incoming body (see reduced-motion below). */
 .sankey-panel-body.is-swapping { animation: sankey-panel-swap 170ms ease-out; }
 @keyframes sankey-panel-swap { from { opacity: 0; transform: translateY(4px); } }
-@container panel (min-width: 900px) { .sankey-layout { grid-template-columns: minmax(0, 1fr) 18rem; } }
+/* Panel content (formerly shared with the removed tooltip system). */
+.sankey-panel-head { display: grid; gap: .3em; }
+.sankey-panel-title { font-size: 1.05em; overflow-wrap: anywhere; }
+.sankey-panel-badges { display: flex; flex-wrap: wrap; gap: .3em; }
+.sankey-panel-rows { display: grid; grid-template-columns: max-content 1fr; gap: .15em .75em; margin: 0; }
+.sankey-panel-rows dt { color: var(--fg-muted); white-space: nowrap; }
+.sankey-panel-rows dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+@container panel (min-width: 900px) { .sankey-layout { grid-template-columns: minmax(0, 1fr) 24rem; } }
 
 .ic-cell { cursor: pointer; }
 .ic-cell rect { stroke: var(--bg); stroke-width: 1; }
@@ -206,7 +213,7 @@ svg path.sankey-linkhit:focus, svg path.sankey-linkhit:focus-visible { stroke: v
 .tree-link { stroke: var(--border); stroke-width: 1.5; }
 .tree-link.is-dispatch { stroke: var(--fg-muted); stroke-dasharray: 5 3; }
 .tree-node { cursor: pointer; }
-/* Glyph + label sit inside the node's role="button" group, so hovering them opens the same tooltip */
+/* Glyph + label sit inside the node's role="button" group */
 .tree-glyph { font-size: 12px; }
 .tree-label { font-size: 12px; fill: var(--fg); }
 .tree-sub { fill: var(--fg-muted); font-size: 10px; }
@@ -226,60 +233,6 @@ svg path.sankey-linkhit:focus, svg path.sankey-linkhit:focus-visible { stroke: v
 .lm-arrowhead.is-repeat { fill: #b45309; }
 .lm-arrowhead.is-exit { fill: #15803d; }
 .lm-edge-label { font-size: 10px; fill: #b45309; pointer-events: none; }
-
-/* ------------------------------------------------------------------------
-   Tooltip / details popover (position-aware-tooltips guide, manual fallback).
-   With [popover] the element is in the top layer; we override the UA's
-   inset:0/margin:auto so JS can place it. Without popover support the same
-   element is toggled with .is-open and position:fixed.
-   ------------------------------------------------------------------------ */
-.tip {
-  position: fixed; inset: auto; margin: 0; padding: 0;
-  inline-size: max-content; max-inline-size: min(34rem, calc(100vw - 16px));
-  max-block-size: min(70vh, 640px); overflow: hidden;
-  background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow);
-  font-size: var(--step--1); line-height: 1.45;
-  display: none;
-}
-/* :where() so engines without :popover-open still keep the .is-open fallback (css guide: no duplicated fallback rules) */
-.tip:where(:popover-open, .is-open) { display: grid; grid-template-rows: auto 1fr; }
-
-/* Anchor positioning (position-aware-tooltips guide), primary path: the browser owns
-   placement — the tooltip opens to the SIDE of the .tip-anchor shim (tooltip.ts moves it
-   to the trigger's centre once per show) and self-regulates left-vs-right via
-   position-try-fallbacks, staying glued through scroll/resize. No JS positioning runs on
-   this path. The shim exists because SVG shapes cannot be anchor targets. The base .tip
-   `inset: auto` above is exactly the guide's popover reset; the anchored state re-adds a
-   margin as the gap. Arrow styling via @container anchored() is skipped — no arrow. */
-@supports (anchor-name: --a) {
-  /* Absolute in the document (tooltip.ts sets document coords) so the browser's scroll
-     tracking keeps the tooltip glued to marks in scrolled content. */
-  .tip-anchor { position: absolute; inline-size: 0; block-size: 0; anchor-name: --obvious-tip; }
-  .tip {
-    position-anchor: --obvious-tip;
-    position-area: right;
-    position-try-fallbacks: left, block-start, block-end;
-    align-self: anchor-center;
-    position-visibility: anchors-visible;
-    margin: 8px;
-  }
-}
-.tip.is-pinned { border-color: var(--accent); }
-.tip-close { justify-self: end; font: inherit; font-size: 1.2em; line-height: 1; border: 0; background: none; color: var(--fg-muted); padding: .35em .6em; cursor: pointer; }
-.tip-close:hover { color: var(--fg); }
-.tip-close[hidden] { display: none; }
-.tip-content { padding: .75em .9em .6em; overflow: auto; display: grid; gap: .5em; }
-.tip-head { display: grid; gap: .3em; }
-.tip-title { font-size: 1.05em; overflow-wrap: anywhere; }
-.tip-badges { display: flex; flex-wrap: wrap; gap: .3em; }
-.tip-rows { display: grid; grid-template-columns: max-content 1fr; gap: .15em .75em; margin: 0; }
-.tip-rows dt { color: var(--fg-muted); white-space: nowrap; }
-.tip-rows dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.tip-textlabel { font-weight: 600; margin-block-start: .25em; }
-.tip-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-block-size: 14lh; overflow: auto; padding: .5em .6em; background: var(--bg-2); border: 1px solid var(--border); border-radius: 6px; font-family: var(--font); font-size: .95em; }
-.tip-text.mono { font-family: var(--mono); font-size: .85em; }
-.tip-actions { display: flex; gap: .5em; }
-.tip-hint { margin: 0; font-size: .85em; }
 
 /* Reduced motion, case by case (css guide: no global `*` duration kill switch). The only CSS
    motion is the redraw fade; icicle zoom transitions are skipped in JS via prefersReducedMotion(). */
