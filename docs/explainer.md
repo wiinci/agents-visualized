@@ -121,7 +121,7 @@ This is the **delegation loop** the Sankey's flow view renders as 43 observed tr
 
 ## 8. Progression — how the main view earned its shape
 
-The Sankey did not start as the panel-driven view above. Seven committed frames show the progression (all in `docs/story/images/`, referenced relatively so they render right here on GitHub):
+The Sankey did not start as the panel-driven view above. Eight committed frames show the progression (all in `docs/story/images/`, referenced relatively so they render right here on GitHub):
 
 **v1 — the honest, ugly rectangle Sankey.** Correct data, default `d3-sankey` rectangles.
 
@@ -150,6 +150,10 @@ The Sankey did not start as the panel-driven view above. Seven committed frames 
 **Anchor tooltips → retired.** The popover-API tooltip pass, later replaced entirely.
 
 ![anchor tooltip](story/images/07-anchor-tooltip.png)
+
+**Static panel, no tooltips.** Floating tooltips retired for good — a permanent, data-derived side panel takes their place.
+
+![static panel](story/images/08-static-panel.png)
 
 **Today — the permanent panel.** Floating tooltips were removed completely (PR #3): a 24rem data-derived panel now sits beside the chart, defaults to the origin node, and swaps on hover *or keyboard focus* — replacing a pointer-only affordance with one that works for everyone.
 
