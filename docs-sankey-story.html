@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>From rectangles to dots: how the Sankey landed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Source+Serif+4:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --black:#0a0a0a; --gray-600:#666666; --gray-400:#999999; --gray-300:#b3b3b3;
+  --border:#e0e0e0; --off-white:#fafafa; --white:#ffffff;
+  --text-primary:var(--black); --text-secondary:var(--gray-600); --text-tertiary:var(--gray-400);
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--off-white); font-family:'Playfair Display', Georgia, serif; color:var(--text-primary); line-height:1.8; }
+article { max-width:700px; margin:0 auto; padding:4rem 1.5rem 5rem; }
+.memo-header h1 { font-size:clamp(2rem,5vw,2.75rem); font-weight:700; letter-spacing:-0.02em; line-height:1.2; margin-bottom:1rem; }
+.memo-subtitle { font-family:'Source Serif 4', Georgia, serif; font-size:1.25rem; font-weight:300; line-height:1.5; color:var(--text-secondary); margin-bottom:1.5rem; }
+.memo-meta { display:flex; align-items:center; gap:0.5rem; font-family:'Source Serif 4', Georgia, serif; font-size:0.875rem; color:var(--text-secondary); }
+.memo-author { display:flex; align-items:center; gap:0.5rem; }
+.author-logo { width:24px; height:24px; border-radius:50%; }
+.author-name { font-weight:500; color:var(--text-primary); }
+.memo-meta-separator { color:var(--gray-300); }
+.memo-divider { border:none; border-top:1px solid var(--border); margin:2rem 0 3rem; }
+.section-label { font-family:'Playfair Display', Georgia, serif; font-variant:small-caps; font-size:0.8rem; letter-spacing:0.15em; color:var(--text-tertiary); margin-bottom:0.5rem; }
+.story-frame { margin:3rem 0; }
+.story-frame h2 { font-size:1.5rem; font-weight:600; letter-spacing:-0.01em; margin-bottom:1rem; }
+.story-frame p, .intro p { font-family:'Source Serif 4', Georgia, serif; font-size:1.125rem; font-weight:400; margin-bottom:1.25rem; }
+.frame-figure { margin:1.75rem 0 0.5rem; border:1px solid var(--border); background:var(--white); }
+.frame-figure img { width:100%; height:auto; display:block; }
+.frame-figure figcaption { font-family:'Source Serif 4', Georgia, serif; font-size:0.875rem; color:var(--text-tertiary); padding:0.75rem 1rem; border-top:1px solid var(--border); text-align:center; }
+.pull { border-left:3px solid var(--black); padding:0.25rem 0 0.25rem 1.25rem; font-style:italic; color:var(--text-secondary); margin:2rem 0; }
+.closing { font-family:'Source Serif 4', Georgia, serif; font-size:1.125rem; margin-top:3rem; padding-top:2rem; border-top:1px solid var(--border); color:var(--text-secondary); }
+</style>
+</head>
+<body>
+<article>
+
+<!-- SECTION: header -->
+<header class="memo-header" data-structural-unit-id="blk_hdr01">
+  <h1>From rectangles to dots: how the Sankey landed</h1>
+  <p class="memo-subtitle">The flow view of &ldquo;Agent loops, visualized&rdquo; &mdash; what it looked like first, what it was aiming at, and the redesign that got it there.</p>
+  <div class="memo-meta">
+    <div class="memo-author">
+      <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 22 20'%3E%3Cpath fill='%23000000' fill-opacity='.92' fill-rule='evenodd' d='M10.94.68c.04.02.08.02.12 0a5.08 5.08 0 0 1 5.15.04 5.38 5.38 0 0 1 2.6 4.57c0 .04.03.08.06.1A5.39 5.39 0 0 1 21.42 10a5.39 5.39 0 0 1-2.55 4.6.12.12 0 0 0-.06.1 5.38 5.38 0 0 1-2.6 4.58c-1.65.98-3.6.93-5.15.04a.12.12 0 0 0-.12 0c-1.55.89-3.5.94-5.15-.04a5.38 5.38 0 0 1-2.6-4.57.12.12 0 0 0-.06-.1A5.39 5.39 0 0 1 .58 10a5.39 5.39 0 0 1 2.55-4.6.12.12 0 0 0 .06-.1c.02-1.84.95-3.6 2.6-4.58a5.08 5.08 0 0 1 5.15-.04ZM8.4 14.85c0-.1-.1-.15-.18-.1a5.07 5.07 0 0 1-3.33.53.12.12 0 0 0-.14.13 3.83 3.83 0 0 0 1.79 2.55c.95.56 2.05.65 3.03.31.07-.02.1-.12.04-.18a5.4 5.4 0 0 1-1.21-3.24Zm5.38-.1c-.08-.05-.18 0-.18.1a5.45 5.45 0 0 1-1.21 3.24c-.06.06-.03.16.04.18.98.34 2.08.25 3.03-.31a3.81 3.81 0 0 0 1.79-2.55.12.12 0 0 0-.14-.13 5.1 5.1 0 0 1-3.33-.54Zm-2.7-2.76a.1.1 0 0 0-.16 0 3.91 3.91 0 0 0 0 5.3.1.1 0 0 0 .16 0 3.91 3.91 0 0 0 0-5.3Zm-1.71-.93a.11.11 0 0 0-.08-.14 3.68 3.68 0 0 0-4.47 2.66c-.02.06.02.12.08.14a3.74 3.74 0 0 0 4.47-2.65Zm7.46 1.67a3.68 3.68 0 0 0-4.12-1.8.11.11 0 0 0-.08.13 3.74 3.74 0 0 0 4.47 2.66c.06-.02.1-.08.08-.14a3.9 3.9 0 0 0-.35-.85Zm1.85-5.59a.11.11 0 0 0-.18.05 5.46 5.46 0 0 1-2.12 2.7.13.13 0 0 0 0 .22 5.27 5.27 0 0 1 2.12 2.7c.03.08.12.1.18.05A3.87 3.87 0 0 0 19.93 10c0-1.14-.48-2.16-1.25-2.86ZM3.5 7.19a.11.11 0 0 0-.18-.05A3.87 3.87 0 0 0 2.07 10c0 1.14.48 2.16 1.25 2.86.06.05.15.03.18-.05a5.47 5.47 0 0 1 2.12-2.7.13.13 0 0 0 0-.22A5.27 5.27 0 0 1 3.5 7.2Zm2.3-1.02c-.32 0-.61.04-.9.11a.11.11 0 0 0-.08.14A3.68 3.68 0 0 0 9.3 9.07c.06 0 .1-.07.08-.13A3.74 3.74 0 0 0 5.8 6.17Zm10.4 0a3.74 3.74 0 0 0-3.57 2.77c-.01.06.02.12.08.14a3.68 3.68 0 0 0 4.47-2.66.11.11 0 0 0-.08-.14 3.63 3.63 0 0 0-.9-.1Zm-5.12-3.46a.1.1 0 0 0-.16 0 3.91 3.91 0 0 0 0 5.3.1.1 0 0 0 .16 0 3.91 3.91 0 0 0 0-5.3ZM9.6 1.9c.06-.06.03-.16-.04-.18a3.62 3.62 0 0 0-3.03.31A3.81 3.81 0 0 0 4.75 4.6c-.01.08.06.15.14.13a5.1 5.1 0 0 1 3.33.54c.08.04.18-.02.18-.1A5.45 5.45 0 0 1 9.6 1.9Zm5.85.13a3.62 3.62 0 0 0-3.03-.31c-.07.02-.1.12-.04.18a5.4 5.4 0 0 1 1.21 3.24c0 .1.1.15.18.1a5.07 5.07 0 0 1 3.33-.53c.08.02.15-.05.14-.13a3.81 3.81 0 0 0-1.79-2.55Z' clip-rule='evenodd'/%3E%3C/svg%3E" alt="Obvious" class="author-logo">
+      <span class="author-name">Obvious</span>
+    </div>
+    <span class="memo-meta-text">3 min read</span>
+    <span class="memo-meta-separator">&middot;</span>
+    <span class="memo-meta-text">September 3, 2026</span>
+  </div>
+</header>
+<hr class="memo-divider">
+
+<!-- SECTION: intro -->
+<div class="intro" data-structural-unit-id="blk_intro01">
+  <p>The Sankey view is the front door of the agent-loop visualizer: it shows the observed flow of one agent loop &mdash; prompts, reasoning, tool calls and results, delegation to worker threads &mdash; as stages wired left to right. In the live dataset it carries 15 stage nodes and 43 links. This is the story of its redesign, frame by frame, from the first build to the one that ships today.</p>
+</div>
+
+<!-- SECTION: frame-before -->
+<section class="story-frame" data-structural-unit-id="blk_f_before">
+  <div class="section-label">Frame 1</div>
+  <h2>Where we started</h2>
+  <p>The first version read the data correctly and still felt wrong. Every stage was a big filled rectangle sized by the metric, links were thick bands ending in arrowheads, and the whole diagram shouted &mdash; every node competed for attention, and the links, the thing that actually explains a flow, were the heaviest ink on the page.</p>
+  <figure class="frame-figure">
+    <img src="https://api.app.obvious.ai/prepare/files/link/fl_RtVkQ6zc/sankey-before.png" alt="Original Sankey view with large rectangular stage nodes and arrowheaded links">
+    <figcaption>v1 &mdash; rectangular stage nodes, arrowhead links, first build.</figcaption>
+  </figure>
+</section>
+
+<!-- SECTION: frame-reference -->
+<section class="story-frame" data-structural-unit-id="blk_f_ref">
+  <div class="section-label">Frame 2</div>
+  <h2>The target</h2>
+  <p>The reference we were handed set a different hierarchy of attention: small marks whose <em>area</em> carries the metric, hairline links, monospace labels, generous whitespace, and zoom controls. Ink belongs to structure; emphasis belongs to area. That single inversion drove the whole redesign.</p>
+  <figure class="frame-figure">
+    <img src="https://api.app.obvious.ai/prepare/files/link/fl_r2Bf2qYo/image.fl_r2Bf2qYo.png" alt="Reference Sankey diagram with area-encoded dots, hairline links and monospace labels">
+    <figcaption>The reference: area-encoded dots, hairline links, monospace labels.</figcaption>
+  </figure>
+</section>
+
+<!-- SECTION: frame-after -->
+<section class="story-frame" data-structural-unit-id="blk_f_after">
+  <div class="section-label">Frame 3</div>
+  <h2>The landing</h2>
+  <p>The shipped view draws small circles &mdash; one per stage, area encoded through <span style="font-family:monospace">d3.scaleSqrt</span> so twice the metric reads as twice the area, not twice the radius. Stage nodes aggregate their steps with a mean-per-step rule; links are hairlines with no arrowheads; labels are monospace; an area legend and keyboard-accessible pan/zoom round it out.</p>
+  <figure class="frame-figure">
+    <img src="https://api.app.obvious.ai/prepare/files/link/fl_4TTVNShM/sankey-after-dots.png" alt="Redesigned Sankey view with area-encoded dot nodes and hairline links">
+    <figcaption>v2 &mdash; area-encoded dots, hairline links, monospace labels, legend, zoom.</figcaption>
+  </figure>
+</section>
+<!-- SECTION: frame-toggle -->
+<section class="story-frame" data-structural-unit-id="blk_f_toggle">
+  <div class="section-label">Frame 4</div>
+  <h2>One chart, two questions</h2>
+  <p>Context and prompt sizes ask different questions of the same flow, so the redesign made the metric itself a switch. One keypress &mdash; or tap &mdash; re-encodes every node area, the legend, and the tooltips between context and prompt; the shape stays, the emphasis moves.</p>
+  <figure class="frame-figure">
+    <img src="https://api.app.obvious.ai/prepare/files/link/fl_0EBWRhLs/sankey-after-prompt-toggle.png" alt="Sankey view with the metric switched to prompt size, re-encoding node areas">
+    <figcaption>The context &harr; prompt metric toggle re-encodes areas, legend and tooltips together.</figcaption>
+  </figure>
+</section>
+
+<!-- SECTION: frame-hover -->
+<section class="story-frame" data-structural-unit-id="blk_f_hover">
+  <div class="section-label">Frame 5</div>
+  <h2>Hover that earns the ink it replaced</h2>
+  <p>With dots this small, the detail lives in the tooltip. Stage nodes report the sizing metric, how it was aggregated, how many steps were folded in, and example excerpts; links got invisible 8-pixel hit strokes so a curved hairline can still be caught by a cursor or a keyboard focus.</p>
+  <figure class="frame-figure">
+    <img src="https://api.app.obvious.ai/prepare/files/link/fl_YeJGAP7f/sankey-after-hover.png" alt="Sankey view with a stage tooltip showing metric, aggregation and example steps">
+    <figcaption>Stage tooltip: sizing metric, aggregation rule, step count, examples.</figcaption>
+  </figure>
+</section>
+
+<!-- SECTION: frame-dark -->
+<section class="story-frame" data-structural-unit-id="blk_f_dark">
+  <div class="section-label">Frame 6</div>
+  <h2>And after dark</h2>
+  <p>The redesign shipped with full theme parity &mdash; hairlines and dot fills re-map to the dark palette without changing a single measurement, so the diagram reads the same in either theme.</p>
+  <figure class="frame-figure">
+    <img src="https://api.app.obvious.ai/prepare/files/link/fl_hflIh9mw/sankey-after-dark.png" alt="Redesigned Sankey view in dark mode">
+    <figcaption>v2 in dark mode &mdash; same geometry, remapped palette.</figcaption>
+  </figure>
+</section>
+
+<!-- SECTION: frame-coda -->
+<section class="story-frame" data-structural-unit-id="blk_f_coda">
+  <div class="section-label">Coda</div>
+  <h2>The tooltips followed the same logic</h2>
+  <p>While the diagram lost its weight, its tooltips lost their custom geometry: they now open beside the mark using the native Popover API with CSS anchor positioning, and the browser itself decides left or right based on available space through <span style="font-family:monospace">position-try-fallbacks</span>. Manual positioning survives only as a feature-detected fallback.</p>
+  <figure class="frame-figure">
+    <img src="https://api.app.obvious.ai/prepare/files/link/fl_JAuYftRc/tooltip-side-right.png" alt="Tooltip opening to the right of a mark via native CSS anchor positioning">
+    <figcaption>Native anchor-positioned tooltip, opening to the side.</figcaption>
+  </figure>
+  <p class="pull">The lesson of the redesign: in a flow diagram, the links are the story. Everything else should step back.</p>
+  <div class="closing">
+    <p>The flow view now ships in the live app alongside the hierarchy, context-growth, delegation, loop-model and summary views &mdash; and the next chapter, a tokens-and-cost view, is already queued.</p>
+  </div>
+</section>
+</article>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function(e) {
+      e.preventDefault();
+      const targetId = this.getAttribute('href').substring(1);
+      if (targetId === '' || targetId === '#') { window.scrollTo({top: 0, behavior: 'smooth'}); }
+      else { const el = document.getElementById(targetId); if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+    });
+  });
+});
+</script>
+</body>
+</html>
