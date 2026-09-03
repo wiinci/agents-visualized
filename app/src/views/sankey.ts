@@ -1,11 +1,17 @@
 import * as d3 from 'd3';
 import { sankey, sankeyJustify, type SankeyNode, type SankeyLink } from 'd3-sankey';
 import type { FlowLink, FlowNode, LoopNode, LoopsDataset } from '../types';
-import { fmtChars, fmtCompact, fmtInt, stageColor, stageLabel } from '../format';
-import { tooltip, type TipContent } from '../tooltip';
-import { flowExamples, stageOf } from '../data';
+import { fmtCompact, fmtInt, stageColor, stageLabel } from '../format';
+import { stageOf } from '../data';
 import { el, makeRoving, onResize, prefersReducedMotion } from '../util';
 
+
+/** What the info panel renders: a fixed-size summary of title, badges and metric rows. */
+interface PanelContent {
+  title: string;
+  badges?: { text: string }[];
+  rows: [label: string, value: string][];
+}
 /**
  * Loop Sankey — "dots and hairlines" variant.
  *
@@ -53,7 +59,6 @@ function splitCycles(nodes: FlowNode[], links: FlowLink[]): { forward: FlowLink[
 interface StageSizes {
   n: number; contextSum: number; contextN: number; promptSum: number; promptN: number;
   tokensSum: number; tokensN: number;
-  ex: { name: string; excerpt?: string; chars?: number }[]; // up to 3 example steps, for the tooltip
 }
 
 function collectStageSizes(root: LoopNode, nodes: FlowNode[]): Map<string, StageSizes> {
@@ -63,13 +68,12 @@ function collectStageSizes(root: LoopNode, nodes: FlowNode[]): Map<string, Stage
   const walk = (node: LoopNode): void => {
     const id = byStage.get(stageOf(node));
     if (id && node.meta) {
-      const s = out.get(id) ?? { n: 0, contextSum: 0, contextN: 0, promptSum: 0, promptN: 0, tokensSum: 0, tokensN: 0, ex: [] };
+      const s = out.get(id) ?? { n: 0, contextSum: 0, contextN: 0, promptSum: 0, promptN: 0, tokensSum: 0, tokensN: 0 };
       s.n++;
       const ctx = node.meta.contextChars ?? (typeof node.meta['contextCharsAtEnd'] === 'number' ? (node.meta['contextCharsAtEnd'] as number) : undefined);
       if (ctx !== undefined) { s.contextSum += ctx; s.contextN++; }
       if (node.meta.promptChars !== undefined) { s.promptSum += node.meta.promptChars; s.promptN++; }
       if (node.meta.tokensEst !== undefined) { s.tokensSum += node.meta.tokensEst; s.tokensN++; }
-      if (s.ex.length < 3) s.ex.push({ name: node.name, excerpt: node.meta.excerpt, chars: node.meta.chars });
       out.set(id, s);
     }
     for (const c of node.children ?? []) walk(c);
@@ -106,7 +110,6 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
   container.replaceChildren();
   if (!nodes.length) { container.append(el('p', { class: 'muted' }, 'No flow data.')); return; }
 
-  const examples = flowExamples(ds.hierarchy);
   const { forward, back } = splitCycles(nodes, links);
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const sizes = collectStageSizes(ds.hierarchy, nodes);
@@ -183,7 +186,7 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
   const highlightFor = (target: Element): void => {
     if (!svgSel) return;
     const key = target.getAttribute('data-key') ?? '';
-    const kind = target.getAttribute('data-tip');
+    const kind = target.getAttribute('data-hit');
     clearHighlight();
     svgSel.classed('is-highlighting', true);
     if (kind === 'node') {
@@ -355,7 +358,7 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
       .attr('class', 'sankey-linkhit')
       .attr('d', (d) => d.d)
       .attr('stroke-width', 8)
-      .attr('data-tip', 'link')
+      .attr('data-hit', 'link')
       .attr('data-key', (d) => d.key)
       .attr('tabindex', -1)
       .attr('role', 'button')
@@ -371,7 +374,7 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
       .selectAll<SVGGElement, SNode>('g').data(graph.nodes).join('g')
       .attr('class', (d) => `sankey-node${radiusOf(d.id).hollow ? ' is-empty' : ''}`)
       .attr('transform', (d) => `translate(${cx(d)},${cy(d)})`)
-      .attr('data-tip', 'node')
+      .attr('data-hit', 'node')
       .attr('data-key', (d) => d.id)
       .attr('tabindex', -1)
       .attr('role', 'button')
@@ -409,7 +412,7 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
     svg.call(zoom);
     svg.on('dblclick.zoom', null);
 
-    makeRoving(host, '[data-tip]');
+    makeRoving(host, '[data-hit]');
     // Metric changes relabel the panel rows; re-render for the current state (no animation).
     renderPanel(false);
   };
@@ -417,27 +420,27 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
   // Highlight on hover/focus (delegated once on the persistent host; redraws replace only the SVG).
   // The info panel follows the same marks: nodes swap its content, links leave it alone.
   const nodeIdOf = (mark: Element | null): string | null =>
-    mark?.getAttribute('data-tip') === 'node' ? mark.getAttribute('data-key') : null;
-  host.addEventListener('pointerover', (e) => { const t = (e.target as Element).closest('[data-tip]'); if (t) highlightFor(t); showPanelFor(nodeIdOf(t)); });
+    mark?.getAttribute('data-hit') === 'node' ? mark.getAttribute('data-key') : null;
+  host.addEventListener('pointerover', (e) => { const t = (e.target as Element).closest('[data-hit]'); if (t) highlightFor(t); showPanelFor(nodeIdOf(t)); });
   host.addEventListener('pointerout', (e) => {
     // Leaving a mark clears the hover highlight unless a mark holds keyboard focus (focus wins).
-    const t = (e.target as Element).closest('[data-tip]');
-    const focused = document.activeElement?.closest('[data-tip]');
+    const t = (e.target as Element).closest('[data-hit]');
+    const focused = document.activeElement?.closest('[data-hit]');
     if (t && (!focused || !host.contains(focused))) clearHighlight();
     else if (focused) highlightFor(focused);
     // Panel: when the pointer moves onto another node, pointerover swaps it in — skipping
     // here avoids a default-view flash between adjacent marks; otherwise the keyboard-focused
     // mark wins, and with neither, the panel reverts to the origin node.
     const to = (e as PointerEvent).relatedTarget as Element | null;
-    if (nodeIdOf(to?.closest('[data-tip]') ?? null) === null) showPanelFor(nodeIdOf(focused ?? null));
+    if (nodeIdOf(to?.closest('[data-hit]') ?? null) === null) showPanelFor(nodeIdOf(focused ?? null));
   });
-  host.addEventListener('focusin', (e) => { const t = (e.target as Element).closest('[data-tip]'); if (t) highlightFor(t); showPanelFor(nodeIdOf(t)); });
+  host.addEventListener('focusin', (e) => { const t = (e.target as Element).closest('[data-hit]'); if (t) highlightFor(t); showPanelFor(nodeIdOf(t)); });
   host.addEventListener('focusout', (e) => {
     const nx = e.relatedTarget as Element | null;
-    if (!nx || !nx.closest('[data-tip]')) clearHighlight();
+    if (!nx || !nx.closest('[data-hit]')) clearHighlight();
     // Focus landing on a non-node mark (or nowhere) leaves no node to show → default view;
     // node → node transitions are handled by focusin on the next mark.
-    if (nodeIdOf(nx?.closest('[data-tip]') ?? null) === null) showPanelFor(null);
+    if (nodeIdOf(nx?.closest('[data-hit]') ?? null) === null) showPanelFor(null);
   });
 
   const zoomTo = (t: d3.ZoomTransform): void => {
@@ -466,8 +469,8 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
     if (lastWidth) draw(lastWidth);
   };
 
-  // ── Node info content (shared by the tooltip and the info panel) ────────
-  const nodeContent = (n: FlowNode): TipContent => {
+  // ── Node info content (the info panel's single source of truth) ────────
+  const nodeContent = (n: FlowNode): PanelContent => {
     const inn = links.filter((l) => l.target === n.id).reduce((s, l) => s + l.value, 0);
     const out = links.filter((l) => l.source === n.id).reduce((s, l) => s + l.value, 0);
     const s = sizes.get(n.id);
@@ -488,33 +491,27 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
         ['outgoing transitions', fmtInt(out)],
         ['id', n.id],
       ],
-      text: s?.ex.length ? {
-        body: s.ex.map((e, i) => `— example ${i + 1} —\n[${e.name}]${e.chars !== undefined ? ` · ${fmtChars(e.chars)}` : ''}\n${e.excerpt ?? '(no excerpt)'}`).join('\n\n'),
-        mono: false,
-        label: `Example steps (${s.ex.length}, from hierarchy)`,
-      } : undefined,
     };
   };
 
   // ── Info panel rendering ────────────────────────────────────────────────
   // Default = the origin node; hovering/focusing a node swaps in that node's
-  // details (the same nodeContent the tooltip composes, so panel and tip agree);
-  // hover-end/focus-out reverts. The full example text stays tooltip-only — the
-  // panel is a fixed-size summary, so it renders title, badges and metric rows.
+  // details of the hovered or focused node; hover-end/focus-out reverts. The
+  // panel is a fixed-size summary: title, badges and metric rows.
   const origin = originNode(nodes, links);
   let panelNodeId: string | null = null;
   const renderPanel = (animate: boolean): void => {
     const n = (panelNodeId !== null ? nodeById.get(panelNodeId) : undefined) ?? origin;
     if (!n) return;
     const c = nodeContent(n);
-    const head = el('div', { class: 'tip-head' });
-    head.append(el('strong', { class: 'tip-title' }, c.title));
+    const head = el('div', { class: 'sankey-panel-head' });
+    head.append(el('strong', { class: 'sankey-panel-title' }, c.title));
     if (c.badges?.length) {
-      const b = el('div', { class: 'tip-badges' });
+      const b = el('div', { class: 'sankey-panel-badges' });
       for (const bd of c.badges) b.append(el('span', { class: 'badge' }, bd.text));
       head.append(b);
     }
-    const dl = el('dl', { class: 'tip-rows' });
+    const dl = el('dl', { class: 'sankey-panel-rows' });
     for (const [k, v] of c.rows) dl.append(el('dt', {}, k), el('dd', {}, v));
     const next = el('div', { class: `sankey-panel-body${animate ? ' is-swapping' : ''}` }, head, dl);
     panelBody.replaceWith(next);
@@ -527,25 +524,6 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
   };
   renderPanel(false); // default view: the origin node
 
-  // ── Tooltip content ─────────────────────────────────────────────────────
-  tooltip().attach(host, (t): TipContent | null => {
-    const key = t.getAttribute('data-key') ?? '';
-    if (t.getAttribute('data-tip') === 'node') {
-      const n = nodeById.get(key);
-      return n ? nodeContent(n) : null;
-    }
-    const [src, tgt] = key.split('->');
-    const l = links.find((x) => x.source === src && x.target === tgt); if (!l || !src || !tgt) return null;
-    const ex = examples.get(`${src}->${tgt}`) ?? [];
-    const isBack = back.includes(l);
-    const exampleText = ex.map((e, i) => `— example ${i + 1} —\n[${e.from.name}] ${e.from.meta?.excerpt ?? ''}\n   ↓\n[${e.to.name}] ${e.to.meta?.excerpt ?? ''}`).join('\n\n');
-    return {
-      title: `${stageLabel(nodeById.get(src)?.stage ?? src)} → ${stageLabel(nodeById.get(tgt)?.stage ?? tgt)}`,
-      badges: [{ text: 'observed' }, { text: l.kind }, ...(isBack ? [{ text: 'loop back' }] : [])],
-      rows: [['transitions', fmtInt(l.value)], ['link kind', l.kind], ['layout', isBack ? 'return arc (cycle), 1px dashed' : `forward link, ${LINK_W[0]}–${LINK_W[1]}px √-scaled by count`]],
-      text: exampleText ? { body: exampleText, mono: false, label: `Example steps (${ex.length}, from hierarchy)` } : undefined,
-    };
-  });
 
   // ResizeObserver fires once on observe (and again when a hidden tab becomes visible),
   // so drawing is deferred until the panel actually has a width.

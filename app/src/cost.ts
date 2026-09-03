@@ -1,5 +1,4 @@
 import * as d3 from 'd3';
-import type { TipContent } from './tooltip';
 import { el } from './util';
 
 /**
@@ -102,20 +101,6 @@ export function fmtCost(usd: number): string {
 export const fmtRate = (usdPerM: number): string => `${f2(usdPerM)} / 1M tokens`;
 
 /**
- * Add a cost row to a shared-tooltip content object, directly under the tokens
- * row (`size` in nodeTip, `tokens` in hand-built lists). Views that already
- * render via nodeTip call this instead of editing tooltip.ts (not owned here).
- */
-export function withCostRow(tip: TipContent, tokens: number | undefined, agent: string | undefined): TipContent {
-  if (tokens === undefined) return tip;
-  const row: [string, string] = ['cost (assumed)', `${fmtCost(costOf(tokens, agent))} · ${fmtRate(rateFor(agent))}`];
-  const i = tip.rows.findIndex(([label]) => label === 'size' || label === 'tokens');
-  if (i < 0) tip.rows.push(row);
-  else tip.rows.splice(i + 1, 0, row);
-  return tip;
-}
-
-/**
  * Re-render hook for views whose rendered output embeds cost figures (cells,
  * table columns, KPIs). Registers ONE document-level listener per container
  * (re-renders recreate the DOM but must not stack listeners).
@@ -133,8 +118,8 @@ const CLASS_LABEL: Record<AgentClass, string> = { user: 'user', orchestrator: 'o
 
 /**
  * Mount the "Rates" button + popover into the site header tools. Native
- * `popover="auto"` where supported (light dismiss + Esc for free, same top
- * layer trick as the shared tooltip); a click-toggled fallback otherwise.
+ * `popover="auto"` where supported (light dismiss + Esc for free); a
+ * click-toggled fallback otherwise.
  * Inputs follow the forms guide: visible labels, min/step constraints, and
  * :user-invalid styling that only appears after the user edits a field.
  */

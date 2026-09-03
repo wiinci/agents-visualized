@@ -98,24 +98,4 @@ export function stageOf(node: LoopNode): string {
   }
 }
 
-/** Example step excerpts for each observed stage transition (for Sankey link tooltips). */
-export function flowExamples(root: LoopNode, max = 3): Map<string, { from: LoopNode; to: LoopNode }[]> {
-  const out = new Map<string, { from: LoopNode; to: LoopNode }[]>();
-  for (const { steps } of collectThreads(root).values()) {
-    for (let i = 0; i + 1 < steps.length; i++) {
-      const a = steps[i]!.node, b = steps[i + 1]!.node;
-      const key = `stage:${stageOf(a)}->stage:${stageOf(b)}`;
-      const arr = out.get(key) ?? [];
-      if (arr.length < max) { arr.push({ from: a, to: b }); out.set(key, arr); }
-    }
-  }
-  return out;
-}
 
-/** Count hierarchy nodes by kind (used to bridge documented phases to observed data). */
-export function countKinds(root: LoopNode): Map<NodeKind, number> {
-  const m = new Map<NodeKind, number>();
-  const walk = (n: LoopNode) => { m.set(n.kind, (m.get(n.kind) ?? 0) + 1); for (const c of n.children ?? []) walk(c); };
-  walk(root);
-  return m;
-}

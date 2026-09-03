@@ -1,8 +1,6 @@
 import * as d3 from 'd3';
 import type { LoopNode, LoopsDataset, NodeKind } from '../types';
 import { agentColor, fmtCompact, fmtInt, nodeAriaLabel } from '../format';
-import { nodeTip, tooltip } from '../tooltip';
-import { withCostRow } from '../cost';
 import { el, makeRoving, onResize, prefersReducedMotion } from '../util';
 
 type HNode = d3.HierarchyRectangularNode<LoopNode>;
@@ -12,9 +10,8 @@ const CONTAINER_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>(['project', 'th
 /**
  * Horizontal icicle (d3.partition): depth runs left→right (project → thread →
  * turn → step → nested worker thread…), and each node's height is its size in
- * characters, so context/prompt bulk is visible in the encoding, not only in
- * tooltips. Colour = agent. Zoom via the pinned tooltip's "Zoom here" action,
- * so click stays reserved for pinning the details panel.
+ * characters, so context/prompt bulk is visible in the encoding. Colour =
+ * agent. Zoom back out with the Reset zoom control.
  */
 export function renderHierarchy(container: HTMLElement, ds: LoopsDataset): void {
   container.replaceChildren();
@@ -34,7 +31,7 @@ export function renderHierarchy(container: HTMLElement, ds: LoopsDataset): void 
 
   const note = el('p', { class: 'view-note' },
     `Icicle of ${fmtInt(root.descendants().length)} nodes. Width steps = depth (project → thread → turn → step; worker threads nest under the turn that dispatched them). `,
-    `Height = characters of text/JSON. Colour = agent. Every cell is hover- and focusable; pin it to read the full text or zoom in.`);
+    `Height = characters of text/JSON. Colour = agent. Every cell is focusable; its aria-label carries the name and size.`);
   const host = el('div', { class: 'chart-host', role: 'group', 'aria-label': 'Turn hierarchy icicle; arrow keys move between cells' });
   container.append(note, legend, controls, host);
 
@@ -64,7 +61,7 @@ export function renderHierarchy(container: HTMLElement, ds: LoopsDataset): void 
     const cell = svg.append('g').selectAll<SVGGElement, HNode>('g').data(visible).join('g')
       .attr('class', 'ic-cell')
       .attr('transform', (d) => `translate(${d.y0 - xShift},${y(Math.max(d.x0, zoomRoot.x0))})`)
-      .attr('data-tip', 'node').attr('data-key', (d) => d.data.id)
+      .attr('data-hit', 'node').attr('data-key', (d) => d.data.id)
       .attr('tabindex', -1).attr('role', 'button')
       .attr('aria-label', (d) => nodeAriaLabel(d.data));
     cell.append('rect')
@@ -76,35 +73,19 @@ export function renderHierarchy(container: HTMLElement, ds: LoopsDataset): void 
     const label = cell.append('text').attr('x', 6).attr('y', 14).attr('class', 'ic-label');
     label.append('tspan').text((d) => d.data.name.length > 28 ? `${d.data.name.slice(0, 27)}…` : d.data.name);
     label.append('tspan').attr('class', 'ic-sub').attr('x', 6).attr('dy', 14).text((d) => `${fmtCompact(d.data.meta?.chars ?? d.value ?? 0)} chars${d.data.meta?.contextChars !== undefined ? ` · ctx ${fmtCompact(d.data.meta.contextChars)}` : ''}`);
-    // Hide labels on cells too small to hold them (keeps SVG legible; tooltip still carries everything)
+    // Hide labels on cells too small to hold them (keeps the SVG legible; the aria-label still carries everything)
     label.style('display', (d) => (y(Math.min(d.x1, zoomRoot.x1)) - y(Math.max(d.x0, zoomRoot.x0)) < 30 || d.y1 - d.y0 < 70 ? 'none' : null));
 
     host.append(svg.node()!);
-    makeRoving(host, '[data-tip]');
+    makeRoving(host, '[data-hit]');
     crumb.textContent = `Showing: ${zoomRoot === laid ? 'whole project' : zoomRoot.ancestors().reverse().map((a) => a.data.name).join(' › ')}`;
   };
-
-  const byId = new Map<string, HNode>();
-  root.each((d) => byId.set(d.data.id, d as HNode));
   const zoomTo = (n: HNode | null) => {
     focusNode = n && n.children ? n : n ? (n.parent as HNode | null) : null;
-    tooltip().hide();
     if (!prefersReducedMotion()) host.classList.add('is-fading');
     requestAnimationFrame(() => { draw(lastWidth); host.classList.remove('is-fading'); });
   };
   resetBtn.addEventListener('click', () => zoomTo(null));
-
-  tooltip().attach(host, (t) => {
-    const n = byId.get(t.getAttribute('data-key') ?? '');
-    if (!n) return null;
-    const extra: [string, string][] = [
-      ['depth', String(n.depth)],
-      ['descendants', fmtInt(n.descendants().length - 1)],
-      ['path', n.ancestors().reverse().map((a) => a.data.name).join(' › ')],
-    ];
-    const actions = n.children ? [{ label: 'Zoom here', onClick: () => zoomTo(n) }] : n.parent ? [{ label: 'Zoom to parent', onClick: () => zoomTo(n.parent as HNode) }] : [];
-    return withCostRow(nodeTip(n.data, extra, actions), n.data.meta?.tokensEst, n.data.meta?.agent);
-  });
 
   onResize(container, draw);
 }

@@ -28,13 +28,12 @@ Static hosting: serve `dist/` with any file server (e.g. `npx serve dist`). Only
 ```
 index.html             semantic shell, tablist, banner, source panel
 src/main.ts            load → index → tabs → lazy per-view render (yielding)
-src/data.ts            fetch/validate/index, stage mapping, flow examples
+src/data.ts            fetch/validate/index, stage mapping
 src/types.ts           TypeScript mirror of SCHEMA.md
-src/tooltip.ts         shared hover/focus/pin details popover
 src/util.ts            yieldToMain, rovingTabindex, responsive(), el()
 src/format.ts          numbers, colours, labels
 src/cost.ts            assumed-rate cost model: editable rates, Rates popover, persistence
-src/views/sankey.ts    1 · Loop Sankey (d3-sankey, loop-backs as return arcs, side info panel)
+src/views/sankey.ts    1 · Loop Sankey (d3-sankey, loop-backs as return arcs, 24rem side info panel)
 src/views/hierarchy.ts 2 · Turn hierarchy (zoomable icicle, size = chars)
 src/views/context.ts   3 · Context growth small multiples
 src/views/delegation.ts4 · Delegation tree (d3-tree, radius = prompt chars)
@@ -53,4 +52,4 @@ Tokens are estimated as characters ÷ 4 on every step and summed; cost = estimat
 
 - `npm run build` passes strict typecheck; dist contains index.html, assets, `data/loops.json` (live) and `data/loops.fixture.json`.
 - `curl` on the preview server: `/` 200, `/data/loops.json` 200 (761 KB), `/data/loops.fixture.json` 200.
-- Headless Chromium (Playwright, script in `/home/user/work/pw/check.mjs`): all seven tabs render SVG/tables with zero page or console errors; hover opens the tooltip; focus opens the tooltip; ArrowRight moves focus between marks; Enter pins; Esc closes; dark theme renders. The Tokens view additionally asserts: heatmap cells + sequential legend present, cost metric relabels every cell with "assumed rate", stacked mode draws one area per agent, the Rates popover opens, and editing the default rate updates the footnote.
+- Headless Chromium (Playwright, script in `/home/user/work/pw/check.mjs`): all seven tabs render SVG/tables with zero page or console errors; ArrowRight moves focus between marks; dark theme renders. No floating tooltips exist anywhere — the Sankey info panel is the sole node-detail surface (hover/focus swap verified). The Tokens view additionally asserts: heatmap cells + sequential legend present, cost metric relabels every cell with "assumed rate", stacked mode draws one area per agent, the Rates popover opens, and editing the default rate updates the footnote.

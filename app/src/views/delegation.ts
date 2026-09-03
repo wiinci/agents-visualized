@@ -1,8 +1,6 @@
 import * as d3 from 'd3';
 import type { LoopNode, LoopsDataset } from '../types';
 import { fmtCompact, fmtInt, nodeAriaLabel, statusColor, statusGlyph } from '../format';
-import { nodeTip, tooltip } from '../tooltip';
-import { withCostRow } from '../cost';
 import { el, makeRoving, onResize } from '../util';
 
 type TNode = d3.HierarchyPointNode<LoopNode>;
@@ -11,8 +9,7 @@ type TNode = d3.HierarchyPointNode<LoopNode>;
  * Left-to-right d3.tree of the delegation hierarchy: root task → subtasks →
  * worker threads. Node colour = status (with a text glyph so colour is not the
  * only cue); node radius = prompt size (chars) so delegation prompt bulk is in
- * the encoding. Hover/focus shows title, assignee, status, prompt size and the
- * full prompt text.
+ * the encoding. Each node's aria-label carries name, status and prompt size.
  */
 export function renderDelegation(container: HTMLElement, ds: LoopsDataset): void {
   container.replaceChildren();
@@ -29,7 +26,6 @@ export function renderDelegation(container: HTMLElement, ds: LoopsDataset): void
   const host = el('div', { class: 'chart-host', role: 'group', 'aria-label': 'Delegation tree; arrow keys move between tasks and worker threads' });
   container.append(note, legend, host);
 
-  const byId = new Map(all.map((d) => [d.data.id, d.data]));
   const promptOf = (n: LoopNode): number => n.meta?.promptChars ?? n.meta?.chars ?? 0;
   const r = d3.scaleSqrt().domain([0, d3.max(all, (d) => promptOf(d.data)) ?? 1]).range([5, 22]);
 
@@ -62,7 +58,7 @@ export function renderDelegation(container: HTMLElement, ds: LoopsDataset): void
     const node = g.append('g').selectAll<SVGGElement, TNode>('g').data(laid.descendants()).join('g')
       .attr('class', 'tree-node')
       .attr('transform', (d) => `translate(${d.y},${d.x})`)
-      .attr('data-tip', 'node').attr('data-key', (d) => d.data.id)
+      .attr('data-hit', 'node').attr('data-key', (d) => d.data.id)
       .attr('tabindex', -1).attr('role', 'button')
       .attr('aria-label', (d) => `${nodeAriaLabel(d.data)}, prompt ${fmtInt(promptOf(d.data))} characters`);
     node.append('circle')
@@ -79,15 +75,8 @@ export function renderDelegation(container: HTMLElement, ds: LoopsDataset): void
       .text((d) => [d.data.kind, d.data.meta?.assignee, `${fmtCompact(promptOf(d.data))} chars`].filter(Boolean).join(' · '));
 
     host.append(svg.node()!);
-    makeRoving(host, '[data-tip]');
+    makeRoving(host, '[data-hit]');
   };
 
-  tooltip().attach(host, (t) => {
-    const n = byId.get(t.getAttribute('data-key') ?? '');
-    if (!n) return null;
-    const tip = withCostRow(nodeTip(n, [['children', fmtInt(n.children?.length ?? 0)]]), n.meta?.tokensEst, n.meta?.agent);
-    if (tip.text) tip.text.label = n.kind === 'worker-thread' ? 'Dispatch prompt (worker\u2019s first user message)' : 'Task description / prompt';
-    return tip;
-  });
   onResize(container, draw);
 }

@@ -2,8 +2,6 @@ import * as d3 from 'd3';
 import type { LoopsDataset } from '../types';
 import { collectThreads, type StepRef } from '../data';
 import { agentColor, fmtCompact, fmtInt, nodeAriaLabel } from '../format';
-import { nodeTip, tooltip } from '../tooltip';
-import { withCostRow } from '../cost';
 import { el, makeRoving, onResize } from '../util';
 
 /**
@@ -11,7 +9,7 @@ import { el, makeRoving, onResize } from '../util';
  * everything earlier in the thread) over step index. The area shows context
  * growth; bars underneath show each step's own size (chars). Turn boundaries
  * are marked with vertical rules. Points are focusable and carry the step's
- * full tooltip.
+ * name and sizes in their aria-label.
  */
 export function renderContext(container: HTMLElement, ds: LoopsDataset): void {
   container.replaceChildren();
@@ -21,12 +19,9 @@ export function renderContext(container: HTMLElement, ds: LoopsDataset): void {
   const globalMax = d3.max(threads, (t) => d3.max(t.steps, (s) => s.node.meta?.contextChars ?? 0)) ?? 1;
   const note = el('p', { class: 'view-note' },
     `One panel per thread (${threads.length}). Line/area = context size (chars) at each step; bars = that step's own size; dashed rules = turn boundaries. `,
-    `Shared y-axis (max ${fmtCompact(globalMax)} chars) so threads are comparable. Hover or focus a point for the step.`);
+    `Shared y-axis (max ${fmtCompact(globalMax)} chars) so threads are comparable.`);
   const grid = el('div', { class: 'multiples' });
   container.append(note, grid);
-
-  const stepById = new Map<string, StepRef>();
-  for (const t of threads) for (const s of t.steps) stepById.set(s.node.id, s);
 
   for (const t of threads) {
     const agent = t.thread.meta?.agent ?? t.steps.find((s) => s.node.meta?.agent !== 'user')?.node.meta?.agent;
@@ -85,19 +80,14 @@ export function renderContext(container: HTMLElement, ds: LoopsDataset): void {
         .attr('cx', (_, i) => x(i)).attr('cy', (s) => y(ctxAt(s)))
         .attr('r', (s) => r(s.node.meta?.chars ?? 0))
         .attr('fill', (s) => agentColor(s.node.meta?.agent)).attr('stroke', 'var(--bg)').attr('stroke-width', 1.5)
-        .attr('data-tip', 'step').attr('data-key', (s) => s.node.id)
+        .attr('data-hit', 'step').attr('data-key', (s) => s.node.id)
         .attr('tabindex', -1).attr('role', 'button')
         .attr('aria-label', (s, i) => `step ${i}, ${nodeAriaLabel(s.node)}, context ${fmtInt(ctxAt(s))} characters`);
 
       host.append(svg.node()!);
-      makeRoving(host, '[data-tip]');
+      makeRoving(host, '[data-hit]');
     };
 
-    tooltip().attach(host, (el2) => {
-      const s = stepById.get(el2.getAttribute('data-key') ?? '');
-      if (!s) return null;
-      return withCostRow(nodeTip(s.node, [['thread step', `#${s.globalStepIndex} of ${t.steps.length}`], ['turn', s.turn.name]]), s.node.meta?.tokensEst, s.node.meta?.agent);
-    });
     onResize(host, draw);
   }
 }
