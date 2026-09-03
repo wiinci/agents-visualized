@@ -47,10 +47,10 @@ const textOf = (p) => (typeof p === 'string' ? p : (p?.text ?? p?.content ?? '')
       .filter((m) => inRange(m.createdAt))
     messageCount += msgs.length
     let turn = -1
+    let turnStep = 0
     for (const m of msgs) {
-      if (m.role === 'user') turn++
+      if (m.role === 'user') { turn++; turnStep = 0 }
       const parts = Array.isArray(m.content) ? m.content : [m.content ?? '']
-      let seq = 0
       for (const part of parts) {
         const ptype = typeof part === 'object' && part !== null ? part.type : 'text'
         const text = textOf(part)
@@ -64,8 +64,8 @@ const textOf = (p) => (typeof p === 'string' ? p : (p?.text ?? p?.content ?? '')
         if (kind === 'tool-call' && toolCallId) toolCallAt.set(toolCallId, m.createdAt)
         const started = kind === 'tool-result' && toolCallId ? toolCallAt.get(toolCallId) : undefined
         steps.push({
-          id: `${th.id}:${Math.max(turn, 0)}:${seq}`,
-          threadId: th.id, turnIndex: Math.max(turn, 0), seq,
+          id: `${th.id}:${Math.max(turn, 0)}:${turnStep++}`,
+          threadId: th.id, turnIndex: Math.max(turn, 0),
           role: m.role, kind,
           chars: text.length, tokensEst: Math.ceil(text.length / 4),
           toolName, toolCallId,
@@ -74,7 +74,6 @@ const textOf = (p) => (typeof p === 'string' ? p : (p?.text ?? p?.content ?? '')
           excerpt: text.slice(0, 160),
           createdAt: m.createdAt ?? null
         })
-        seq++
       }
     }
   }
