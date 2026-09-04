@@ -1,17 +1,30 @@
 import * as d3 from 'd3';
-import type { LoopsDataset } from '../types';
+import type { LoopNode, LoopsDataset } from '../types';
+import { collectThreads } from '../data';
 import { agentColor, fmtInt, fmtTime } from '../format';
 import { costOf, fmtCost, fmtRate, onRatesChange, rateFor } from '../cost';
 import { el } from '../util';
+import { createInfoPanel, nodePanel, wireInfoPanel } from '../panel';
 
 /**
  * Summary panel from `stats`: per-agent totals, per-tool totals (with inline
- * bars so sizes are visible, not only numeric), and the turns table.
- * Plain HTML tables are the accessible alternative to the SVG views.
+ * bars so sizes are visible, not only numeric), and the turns table. Hovering
+ * or focusing a turn row swaps the info panel to that turn (default: overall
+ * totals). Plain HTML tables are the accessible alternative to the SVG views.
  */
 export function renderSummary(container: HTMLElement, ds: LoopsDataset): void {
   container.replaceChildren();
   const { agents, tools, turns } = ds.stats;
+
+  // Index turn → its opening user message node, for the info panel's prompt text.
+  const turnNodes = new Map<string, { turn: LoopNode; prompt: LoopNode | undefined }>();
+  for (const [tid, t] of collectThreads(ds.hierarchy)) {
+    for (const turn of t.thread.children ?? []) {
+      if (turn.kind !== 'turn') continue;
+      const ti = turn.meta?.turnIndex ?? (t.thread.children ?? []).indexOf(turn);
+      turnNodes.set(`${tid}#${ti}`, { turn, prompt: turn.children?.find((c) => c.kind === 'user-message') });
+    }
+  }
 
   const totals = {
     chars: d3.sum(agents, (a) => a.chars), tokens: d3.sum(agents, (a) => a.tokensEst),
@@ -55,6 +68,48 @@ export function renderSummary(container: HTMLElement, ds: LoopsDataset): void {
   container.append(el('h3', {}, 'Turns'));
   const maxCtx = d3.max(turns, (t) => t.contextCharsAtEnd) ?? 1;
   const turnRows = [...turns].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+
+  // Info panel, modelled on the Sankey view's: overall totals by default, a
+  // hovered/focused turn row's details otherwise — the content the former
+  // tooltips composed for this section (turn totals plus the opening user
+  // prompt's text). One panel serves the turns table.
+  const totalCost = d3.sum(agents, (a) => costOf(a.tokensEst, a.agent));
+  const panel = createInfoPanel({
+    headingId: 'summary-panel-title',
+    heading: 'Details',
+    contentFor: (key) => {
+      const t = turnRows.find((x) => `${x.threadId}#${x.turnIndex}` === key);
+      if (!t) return null;
+      const found = turnNodes.get(key);
+      const rows: [string, string][] = [
+        ['thread', t.threadId], ['agent', t.agent], ['started', fmtTime(t.startedAt)],
+        ...(t.endedAt ? [['ended', fmtTime(t.endedAt)] as [string, string]] : []),
+        ['steps', fmtInt(t.steps)], ['tool calls', fmtInt(t.toolCalls)], ['chars', fmtInt(t.chars)], ['tokens (est.)', `≈${fmtInt(t.tokensEst)}`],
+        ['cost (est., assumed rate)', `${fmtCost(costOf(t.tokensEst, t.agent))} · ${fmtRate(rateFor(t.agent))}`],
+        ['context at end', `${fmtInt(t.contextCharsAtEnd)} chars`], ['user prompt', `${fmtInt(t.userPromptChars)} chars`],
+      ];
+      if (found?.prompt) {
+        const content = nodePanel(found.prompt, rows);
+        content.title = found.turn.name;
+        content.badges = [{ text: 'turn' }, { text: t.agent }];
+        if (content.text) content.text.label = 'User prompt that opened this turn';
+        return content;
+      }
+      return { title: `${t.threadId} · turn ${t.turnIndex + 1}`, badges: [{ text: 'turn' }, { text: t.agent }], rows };
+    },
+    defaultContent: () => ({
+      title: 'Overall totals',
+      badges: [{ text: `${fmtInt(turns.length)} turns` }, { text: `${fmtInt(ds.source.threadIds.length)} threads` }],
+      rows: [
+        ['messages', fmtInt(ds.source.messageCount)],
+        ['steps / tool calls', `${fmtInt(d3.sum(turns, (t) => t.steps))} / ${fmtInt(totals.toolCalls)} (${fmtInt(totals.errors)} errors)`],
+        ['characters', `${fmtInt(totals.chars)} · ≈${fmtInt(totals.tokens)} tokens (est.)`],
+        ['cost (est., assumed rates)', `${fmtCost(totalCost)} — not provider data`],
+        ['largest context', `${fmtInt(maxCtx)} chars at end of a turn`],
+        ['interaction', 'hover or focus a turn row for that turn'],
+      ],
+    }),
+  });
   const tbl = table(
     ['turn', 'agent', 'started', 'steps', 'tool calls', 'chars', 'tokens (est.)', 'cost (est.)', 'context at end', 'user prompt chars'],
     turnRows.map((t) => [
@@ -63,11 +118,16 @@ export function renderSummary(container: HTMLElement, ds: LoopsDataset): void {
       fmtTime(t.startedAt), fmtInt(t.steps), fmtInt(t.toolCalls), fmtInt(t.chars), fmtInt(t.tokensEst), fmtCost(costOf(t.tokensEst, t.agent)),
       bar(t.contextCharsAtEnd, maxCtx, agentColor(t.agent)), fmtInt(t.userPromptChars),
     ]),
-    (tr) => {
+    (tr, i) => {
+      const t = turnRows[i]!;
+      tr.setAttribute('data-hit', 'turn');
+      tr.setAttribute('data-key', `${t.threadId}#${t.turnIndex}`);
       tr.setAttribute('tabindex', '0');
     },
   );
-  container.append(tbl);
+  const turnsLayout = el('div', { class: 'info-layout' }, el('div', { class: 'table-scroll' }, tbl), panel.root);
+  container.append(turnsLayout);
+  wireInfoPanel([tbl], panel);
 
   // Memory facts, if the pipeline attached them (hierarchy.meta.memory is an extension beyond SCHEMA.md; rendered defensively).
   const mem = ds.hierarchy.meta?.memory;

@@ -2,6 +2,7 @@ import * as d3 from 'd3';
 import type { LoopNode, LoopsDataset, NodeKind } from '../types';
 import { agentColor, fmtCompact, fmtInt, nodeAriaLabel } from '../format';
 import { el, makeRoving, onResize, prefersReducedMotion } from '../util';
+import { createInfoPanel, nodePanel, withCostRow, wireInfoPanel } from '../panel';
 
 type HNode = d3.HierarchyRectangularNode<LoopNode>;
 
@@ -11,7 +12,10 @@ const CONTAINER_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>(['project', 'th
  * Horizontal icicle (d3.partition): depth runs left→right (project → thread →
  * turn → step → nested worker thread…), and each node's height is its size in
  * characters, so context/prompt bulk is visible in the encoding. Colour =
- * agent. Zoom back out with the Reset zoom control.
+ * agent. Zoom back out with the Reset zoom control. Hovering or focusing any
+ * cell swaps the section's info panel to that cell's details (default: the
+ * project root), reviving the detail surface the pre-2026-09-03 tooltips gave
+ * this section.
  */
 export function renderHierarchy(container: HTMLElement, ds: LoopsDataset): void {
   container.replaceChildren();
@@ -31,9 +35,32 @@ export function renderHierarchy(container: HTMLElement, ds: LoopsDataset): void 
 
   const note = el('p', { class: 'view-note' },
     `Icicle of ${fmtInt(root.descendants().length)} nodes. Width steps = depth (project → thread → turn → step; worker threads nest under the turn that dispatched them). `,
-    `Height = characters of text/JSON. Colour = agent. Every cell is focusable; its aria-label carries the name and size.`);
+    `Height = characters of text/JSON. Colour = agent. Every cell is focusable; its aria-label carries the name and size, and hovering or focusing it swaps the info panel to that cell.`);
   const host = el('div', { class: 'chart-host', role: 'group', 'aria-label': 'Turn hierarchy icicle; arrow keys move between cells' });
-  container.append(note, legend, controls, host);
+
+  // Info panel, modelled on the Sankey view's: project root by default, a
+  // hovered/focused cell's details otherwise. Content is the former tooltip's
+  // nodeTip for this section — node fields plus depth, descendants and path,
+  // with the assumed-rate cost row directly after the size row.
+  const byId = new Map<string, HNode>();
+  root.each((d) => byId.set(d.data.id, d as HNode));
+  const cellContent = (n: HNode) => {
+    const extra: [string, string][] = [
+      ['depth', String(n.depth)],
+      ['descendants', fmtInt(n.descendants().length - 1)],
+      ['path', n.ancestors().reverse().map((a) => a.data.name).join(' › ')],
+    ];
+    return withCostRow(nodePanel(n.data, extra), n.data.meta?.tokensEst, n.data.meta?.agent);
+  };
+  const panel = createInfoPanel({
+    headingId: 'hierarchy-panel-title',
+    heading: 'Cell details',
+    contentFor: (key) => { const n = byId.get(key); return n ? cellContent(n) : null; },
+    defaultContent: () => { const r = byId.get(root.data.id); return r ? cellContent(r) : null; },
+  });
+  const layout = el('div', { class: 'info-layout' }, host, panel.root);
+  container.append(note, legend, controls, layout);
+  wireInfoPanel([host], panel);
 
   let focusNode: HNode | null = null;
   let lastWidth = 0;

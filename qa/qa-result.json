@@ -1,5 +1,5 @@
 {
-  "base": "http://[::1]:4173/",
+  "base": "http://127.0.0.1:4173/",
   "banner": {
     "hidden": false,
     "text": "Live data. Loaded data/loops.json."
@@ -57,7 +57,7 @@
       "svgCount": 0,
       "tableCount": 3,
       "tipMarks": 0,
-      "hitMarks": 0,
+      "hitMarks": 7,
       "renderErrors": 0
     },
     {
@@ -82,6 +82,58 @@
     "revertsOnMouseout": true,
     "focusNode": "reason",
     "stackedBelowBreakpoint": true
+  },
+  "sectionPanels": {
+    "hierarchy": {
+      "present": true,
+      "ariaLive": "polite",
+      "infoLayout": true,
+      "besideContent": true,
+      "defaultContent": "agents-visualized",
+      "hoverContent": "Agent Loops D3 Visualization",
+      "revertsOnMouseout": true,
+      "focusContent": "Agent Loops D3 Visualization"
+    },
+    "context": {
+      "present": true,
+      "ariaLive": "polite",
+      "infoLayout": true,
+      "besideContent": true,
+      "defaultContent": "Context trajectories",
+      "hoverContent": "reasoning",
+      "revertsOnMouseout": true,
+      "focusContent": "reasoning"
+    },
+    "delegation": {
+      "present": true,
+      "ariaLive": "polite",
+      "infoLayout": true,
+      "besideContent": true,
+      "defaultContent": "delegation",
+      "hoverContent": "agents-visualized: D3 + TypeScript visualization of Obvious agent loops",
+      "revertsOnMouseout": true,
+      "focusContent": "agents-visualized: D3 + TypeScript visualization of Obvious agent loops"
+    },
+    "summary": {
+      "present": true,
+      "ariaLive": "polite",
+      "infoLayout": true,
+      "besideContent": true,
+      "defaultContent": "Overall totals",
+      "hoverContent": "turn 2: Use TypeScript and https://developer.chrome.com/docs/modern-",
+      "revertsOnMouseout": true,
+      "focusContent": "turn 2: Use TypeScript and https://developer.chrome.com/docs/modern-"
+    },
+    "tokens": {
+      "present": true,
+      "ariaLive": "polite",
+      "infoLayout": true,
+      "besideContent": true,
+      "defaultContent": "Grand totals (est.)",
+      "hoverContent": "Agent Loops D3 Visualization · turn 1",
+      "revertsOnMouseout": true,
+      "focusContent": "Agent Loops D3 Visualization · turn 1"
+    }
   },
   "errors": []
 }

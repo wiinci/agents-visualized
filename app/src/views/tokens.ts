@@ -1,9 +1,10 @@
 import * as d3 from 'd3';
 import type { LoopNode, LoopsDataset, TurnStat } from '../types';
 import { collectThreads, isStepKind } from '../data';
-import { agentColor, fmtCompact, fmtInt } from '../format';
+import { agentColor, fmtCompact, fmtInt, fmtTime } from '../format';
 import { costOf, fmtCost, fmtRate, onRatesChange, rateFor } from '../cost';
 import { el, makeRoving, onResize } from '../util';
+import { createInfoPanel, wireInfoPanel, type PanelContent } from '../panel';
 
 /**
  * Tokens & cost — consumption per turn and per agent, from the same observed
@@ -49,13 +50,20 @@ function deriveTurnAgentTokens(root: LoopNode): Map<string, number> {
   return out;
 }
 
-/** threadId → display name (stats.turns carries only the id). */
-function threadDirectory(ds: LoopsDataset): Map<string, string> {
+/** threadId → display name (stats.turns carries only the id), and turnKey → its opening user-message node (for the panel's prompt excerpt). */
+function threadDirectory(ds: LoopsDataset): { names: Map<string, string>; prompts: Map<string, LoopNode> } {
   const names = new Map<string, string>();
+  const prompts = new Map<string, LoopNode>();
   for (const [tid, t] of collectThreads(ds.hierarchy)) {
     if (!names.has(tid)) names.set(tid, t.thread.name);
+    (t.thread.children ?? []).forEach((turn, i) => {
+      if (turn.kind !== 'turn') return;
+      const ti = turn.meta?.turnIndex ?? i;
+      const prompt = (turn.children ?? []).find((c) => c.kind === 'user-message');
+      if (prompt) prompts.set(`${tid}#${ti}`, prompt);
+    });
   }
-  return names;
+  return { names, prompts };
 }
 
 /** Column order: fixed palette order first, then any other agents in first-seen order. */
@@ -93,13 +101,20 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
   if (!turns.length) { container.append(el('p', { class: 'muted' }, 'No turns in this dataset.')); return; }
 
   const cells = deriveTurnAgentTokens(ds.hierarchy);
-  const names = threadDirectory(ds);
+  const { names, prompts } = threadDirectory(ds);
   const agents = agentColumns(ds);
   const valueOf = (t: TurnStat, agent: string): number => cells.get(cellKey(t.threadId, t.turnIndex, agent)) ?? 0;
   const val = (tokens: number, agent: string): number => (metric === 'cost' ? costOf(tokens, agent) : tokens);
   const fmtVal = (n: number): string => (metric === 'cost' ? fmtCost(n) : `≈${fmtInt(n)}`);
   const fmtValCompact = (n: number): string => (metric === 'cost' ? fmtCost(n) : `≈${fmtCompact(n)}`);
   const unitLabel = metric === 'cost' ? 'cost (est., assumed rate)' : 'tokens (est.)';
+  const turnName = (t: TurnStat): string => `${names.get(t.threadId) ?? t.threadId} · turn ${t.turnIndex + 1}`;
+
+  function excerptFor(t: TurnStat): PanelContent['text'] {
+    const p = prompts.get(`${t.threadId}#${t.turnIndex}`);
+    const body = p?.meta?.excerpt ?? '';
+    return body ? { body, mono: false, label: 'User prompt that opened this turn (excerpt)' } : undefined;
+  }
 
   // ── Toolbar: metric toggle + chart-mode toggle (select pattern used app-wide) ──
   const metricSel = el('select', { id: 'tok-metric', class: 'select' });
@@ -112,27 +127,94 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
   modeSel.value = stacked ? 'stacked' : 'lines';
   modeSel.addEventListener('change', () => { stacked = modeSel.value === 'stacked'; focusAfter = 'mode'; renderTokens(container, ds); });
 
+  // Info panel, modelled on the Sankey view's: grand totals by default, a
+  // hovered/focused heatmap cell or line-chart turn column otherwise — the
+  // content the former tooltips composed for this section. One panel serves
+  // both charts.
+  const panel = createInfoPanel({
+    headingId: 'tokens-panel-title',
+    heading: 'Details',
+    contentFor: (key) => (key.startsWith('turn:') ? lineContent(Number(key.slice(5))) : cellContent(key)),
+    defaultContent: () => ({
+      title: 'Grand totals (est.)',
+      badges: [{ text: `${fmtInt(turns.length)} turns` }, { text: `${fmtInt(agents.length)} agents` }],
+      rows: [
+        ...agents.map((a): [string, string] => {
+          const st = ds.stats.agents.find((x) => x.agent === a);
+          return [a, st ? `≈${fmtInt(st.tokensEst)} tokens (est.) · ${fmtCost(costOf(st.tokensEst, a))} at assumed rate` : '—'];
+        }),
+        ['all agents', `≈${fmtInt(d3.sum(ds.stats.agents, (x) => x.tokensEst))} tokens (est.) · ${fmtCost(d3.sum(ds.stats.agents, (x) => costOf(x.tokensEst, x.agent)))} at assumed rates`],
+        ['method', 'tokens = chars ÷ 4 per step, summed; cost = est. tokens × assumed rate'],
+        ['interaction', 'hover or focus a heatmap cell or line column for that turn'],
+      ],
+    }),
+  });
+
+  // One chart column beside the panel — same layout pattern as the Sankey view.
+  const col = el('div', {});
+  const layout = el('div', { class: 'info-layout' }, col, panel.root);
   container.append(
     el('p', { class: 'view-note' },
       `${fmtInt(turns.length)} turns across ${fmtInt(new Set(turns.map((t) => t.threadId)).size)} threads. `,
-      el('strong', {}, 'Everything here is estimated'), ' — tokens = characters ÷ 4, cost = estimated tokens × an assumed rate (edit it under ', el('em', {}, 'Rates'), ' in the header). No provider usage data exists in this dataset.'),
+      el('strong', {}, 'Everything here is estimated'), ' — tokens = characters ÷ 4, cost = estimated tokens × an assumed rate (edit it under ', el('em', {}, 'Rates'), ' in the header). Hovering or focusing a heatmap cell or line column swaps the panel to that turn.'),
     el('div', { class: 'toolbar' },
       el('label', { class: 'sankey-metric', for: 'tok-metric' }, 'Metric: ', metricSel),
       el('label', { class: 'sankey-metric', for: 'tok-mode' }, 'Line chart: ', modeSel),
     ),
+    layout,
   );
+
+  // Panel content builders — revived from the pre-2026-09-03 tooltips:
+  // heatmap cells showed the turn/agent metric plus the turn's context; line
+  // columns showed per-agent deltas and cumulative values.
+  function cellContent(key: string): PanelContent | null {
+    for (const t of turns) {
+      for (const a of agents) {
+        if (cellKey(t.threadId, t.turnIndex, a) !== key) continue;
+        const v = valueOf(t, a);
+        const shown = val(v, a);
+        const rows: [string, string][] = [
+          ['agent', a],
+          [unitLabel, metric === 'cost' ? `${fmtCost(shown)} · ${fmtRate(rateFor(a))}` : `≈${fmtInt(v)} (chars ÷ 4)`],
+          ['context at end of turn', `${fmtInt(t.contextCharsAtEnd)} chars`],
+          ['user prompt', `${fmtInt(t.userPromptChars)} chars`],
+          ['steps', fmtInt(t.steps)],
+          ['tool calls', fmtInt(t.toolCalls)],
+          ['started', fmtTime(t.startedAt)],
+        ];
+        if (v === 0) rows.splice(1, 0, ['note', `no observed steps by ${a} in this turn`]);
+        return { title: turnName(t), badges: [{ text: 'turn' }, { text: a }], rows, text: excerptFor(t) };
+      }
+    }
+    return null;
+  }
+
+  function lineContent(i: number): PanelContent | null {
+    const t = turns[i];
+    if (!t) return null;
+    const rows: [string, string][] = [
+      ...series.map((s): [string, string] => [
+        s.agent,
+        `+${fmtVal(s.delta[i] ?? 0)}${metric === 'cost' ? '' : ' (est.)'} · cumulative ${fmtVal(s.cum[i] ?? 0)}`,
+      ]),
+      ['all agents', `+${fmtVal(totals[i] ?? 0)}${metric === 'cost' ? '' : ' (est.)'} · cumulative ${fmtVal(d3.sum(series, (s) => s.cum[i] ?? 0))}`],
+      ['started', fmtTime(t.startedAt)],
+    ];
+    if (metric === 'cost') rows.unshift(['note', `cost = est. tokens × ${fmtRate(rateFor(t.agent))} (assumed; not provider data)`]);
+    return { title: `${turnName(t)} (#${i + 1} globally)`, badges: [{ text: 'turn' }], rows, text: excerptFor(t) };
+  }
 
   // ── 1. Heatmap ──────────────────────────────────────────────────────────
   const maxCell = d3.max(turns, (t) => d3.max(agents, (a) => val(valueOf(t, a), a))) ?? 0;
   const heatHost = el('div', { class: 'chart-host tok-chart', role: 'group', 'aria-label': `Heatmap of estimated tokens by turn (row) and agent (column); arrow keys move between cells` });
   const heatLegend = el('div', { class: 'tok-legend', 'aria-hidden': 'true' });
-  container.append(el('h3', {}, 'Heatmap — tokens est. by turn and agent'), el('div', { class: 'tok-legend-row' }, heatLegend), heatHost);
+  col.append(el('h3', {}, 'Heatmap — tokens est. by turn and agent'), el('div', { class: 'tok-legend-row' }, heatLegend), heatHost);
 
   const heatNote = el('p', { class: 'view-note muted small' },
     'Rows are turns in global start-time order (a turn = one user message + everything until the next); columns are agents. ',
     'Colour = what that agent produced in that turn, so a turn with a user message, orchestrator steps and worker steps fills several cells. ',
     'Pale/empty cells mean the agent produced nothing in that turn.');
-  container.append(heatNote);
+  col.append(heatNote);
 
   const drawHeat = (width: number): void => {
     heatHost.replaceChildren();
@@ -203,18 +285,18 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
   const totals = turns.map((_, i) => d3.sum(series, (s) => s.cum[i] ?? 0));
 
   const lineHost = el('div', { class: 'chart-host tok-chart', role: 'group', 'aria-label': 'Cumulative estimated tokens by agent over turn index; arrow keys move between turns' });
-  container.append(el('h3', {}, stacked ? 'Stacked area — cumulative consumption, all agents' : 'Cumulative tokens est. by agent'), lineHost);
-  container.append(el('p', { class: 'view-note muted small' },
+  col.append(el('h3', {}, stacked ? 'Stacked area — cumulative consumption, all agents' : 'Cumulative tokens est. by agent'), lineHost);
+  col.append(el('p', { class: 'view-note muted small' },
     'X = turn index in global start-time order (not wall-clock time — turns have very different durations). ',
     stacked
       ? 'Bands stack each agent\u2019s cumulative total, so the top edge is overall consumption. '
       : 'Each line is one agent\u2019s running total; labels sit at line ends where they fit. ',
-    'Hover, or focus a turn with the keyboard, to highlight that turn\u2019s crosshair and per-agent points.'));
+    'Hover, or focus a turn with the keyboard, to highlight that turn\u2019s crosshair and per-agent points and swap the panel to that turn.'));
 
   // Agent legend (colour + text, never colour alone)
   const legend = el('div', { class: 'legend', role: 'list', 'aria-label': 'Agent colours' });
   for (const s of series) legend.append(el('span', { class: 'legend-item', role: 'listitem' }, el('i', { class: 'swatch', style: `--c:${agentColor(s.agent)}` }), s.agent));
-  container.append(legend);
+  col.append(legend);
 
   // Geometry + focus hooks refreshed by each drawLine; the interaction listeners below
   // are attached to lineHost ONCE (drawLine re-runs on resize and must not stack them).
@@ -339,10 +421,12 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
   onResize(lineHost, drawLine);
 
   // Honest-labelling footnote (also the schema gap note: stats.turns carries no thread display name).
-  container.append(el('p', { class: 'view-note muted small' },
+  col.append(el('p', { class: 'view-note muted small' },
     `Tokens are estimated at chars ÷ 4 on every step, then summed — nothing here is measured usage. `,
     `Cost = estimated tokens × an assumed rate (${fmtRate(rateFor(undefined))} default, per-class overrides under Rates in the header) — illustrative only. `,
     `With only ${fmtInt(turns.length)} turns the lines are short; cumulative totals still show where consumption concentrated.`));
+
+  wireInfoPanel([heatHost, lineHost], panel, (mark) => (mark.classList.contains('tok-hit') ? `turn:${mark.getAttribute('data-key') ?? ''}` : mark.getAttribute('data-key')));
 
   onRatesChange(container, () => renderTokens(container, ds));
 

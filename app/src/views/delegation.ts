@@ -2,6 +2,7 @@ import * as d3 from 'd3';
 import type { LoopNode, LoopsDataset } from '../types';
 import { fmtCompact, fmtInt, nodeAriaLabel, statusColor, statusGlyph } from '../format';
 import { el, makeRoving, onResize } from '../util';
+import { createInfoPanel, nodePanel, withCostRow, wireInfoPanel } from '../panel';
 
 type TNode = d3.HierarchyPointNode<LoopNode>;
 
@@ -9,7 +10,9 @@ type TNode = d3.HierarchyPointNode<LoopNode>;
  * Left-to-right d3.tree of the delegation hierarchy: root task → subtasks →
  * worker threads. Node colour = status (with a text glyph so colour is not the
  * only cue); node radius = prompt size (chars) so delegation prompt bulk is in
- * the encoding. Each node's aria-label carries name, status and prompt size.
+ * the encoding. Each node's aria-label carries name, status and prompt size;
+ * hovering or focusing a node swaps the info panel to that node (default: the
+ * root dispatcher).
  */
 export function renderDelegation(container: HTMLElement, ds: LoopsDataset): void {
   container.replaceChildren();
@@ -19,12 +22,30 @@ export function renderDelegation(container: HTMLElement, ds: LoopsDataset): void
 
   const note = el('p', { class: 'view-note' },
     `Observed delegation: ${fmtInt(all.length)} nodes (${fmtInt(all.filter((d) => d.data.kind === 'task').length)} tasks, ${fmtInt(all.filter((d) => d.data.kind === 'worker-thread').length)} worker threads). `,
-    `Circle area = prompt size in chars (task description or dispatch prompt); colour + glyph = status.`);
+    `Circle area = prompt size in chars (task description or dispatch prompt); colour + glyph = status. Hovering or focusing a node swaps the info panel to that node.`);
   const legend = el('div', { class: 'legend', role: 'list', 'aria-label': 'Status colours' });
   for (const s of statuses) legend.append(el('span', { class: 'legend-item', role: 'listitem' }, el('i', { class: 'swatch', style: `--c:${statusColor(s)}` }), `${statusGlyph(s)} ${s}`));
   legend.append(el('span', { class: 'legend-item', role: 'listitem' }, el('i', { class: 'swatch swatch-ring' }), 'worker thread'));
   const host = el('div', { class: 'chart-host', role: 'group', 'aria-label': 'Delegation tree; arrow keys move between tasks and worker threads' });
-  container.append(note, legend, host);
+
+  // Info panel, modelled on the Sankey view's: root dispatcher by default, a
+  // hovered/focused node's details otherwise. Content is the former tooltip's
+  // nodeTip plus child count, with the prompt text labelled per node kind.
+  const byId = new Map(all.map((d) => [d.data.id, d.data]));
+  const nodeContent = (n: LoopNode) => {
+    const content = withCostRow(nodePanel(n, [['children', fmtInt(n.children?.length ?? 0)]]), n.meta?.tokensEst, n.meta?.agent);
+    if (content.text) content.text.label = n.kind === 'worker-thread' ? 'Dispatch prompt (worker’s first user message)' : 'Task description / prompt';
+    return content;
+  };
+  const panel = createInfoPanel({
+    headingId: 'delegation-panel-title',
+    heading: 'Node details',
+    contentFor: (key) => { const n = byId.get(key); return n ? nodeContent(n) : null; },
+    defaultContent: () => nodeContent(ds.delegation),
+  });
+  const layout = el('div', { class: 'info-layout' }, host, panel.root);
+  container.append(note, legend, layout);
+  wireInfoPanel([host], panel);
 
   const promptOf = (n: LoopNode): number => n.meta?.promptChars ?? n.meta?.chars ?? 0;
   const r = d3.scaleSqrt().domain([0, d3.max(all, (d) => promptOf(d.data)) ?? 1]).range([5, 22]);

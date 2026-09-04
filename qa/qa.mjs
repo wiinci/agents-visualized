@@ -131,6 +131,85 @@ if (!sPanelInfo.present) {
   if (tipStateDark.tipElements > 0 || tipStateDark.tipAttributes > 0) errors.push(`sankey: tooltip found in dark mode (elements: ${tipStateDark.tipElements}, attributes: ${tipStateDark.tipAttributes})`);
 }
 
+// Section info panels (hierarchy / context / delegation / summary / tokens):
+// the same contract as the Sankey panel — present by default beside the view
+// content, origin-default content, hover/focus swap, mouseout/blur revert.
+// Captures hovered + default (light) and default (dark) screenshots per section.
+const SECTION_HITS = [
+  ['hierarchy', '[data-hit]'],
+  ['context', '[data-hit]'],
+  ['delegation', '[data-hit]'],
+  ['summary', 'tr[data-hit]'],
+  ['tokens', '[data-hit]'],
+];
+const sectionPanels = {};
+for (const [id, hitSel] of SECTION_HITS) {
+  await page.selectOption('#theme', 'auto'); await page.waitForTimeout(200);
+  await page.click(`#tab-${id}`); await page.waitForTimeout(600);
+  const sec = {};
+  sectionPanels[id] = sec;
+  const panel = page.locator(`#panel-${id} .sankey-panel`);
+  sec.present = (await panel.count()) === 1;
+  if (!sec.present) { errors.push(`${id}: info panel missing`); continue; }
+  sec.ariaLive = await panel.getAttribute('aria-live');
+  if (sec.ariaLive !== 'polite') errors.push(`${id}: info panel aria-live is not polite`);
+  const layout = page.locator(`#panel-${id} .info-layout`);
+  sec.infoLayout = (await layout.count()) === 1;
+  const tracks = (await layout.evaluate((n) => getComputedStyle(n).gridTemplateColumns)).trim().split(/\s+/);
+  sec.besideContent = tracks.length >= 2;
+  if (!sec.besideContent) errors.push(`${id}: info panel is not beside the content (grid tracks: ${tracks.join(' | ')})`);
+  const title = panel.locator('.sankey-panel-body .sankey-panel-title');
+  const defaultTitle = ((await title.textContent()) ?? '').trim();
+  sec.defaultContent = defaultTitle;
+  if (!defaultTitle) errors.push(`${id}: info panel has no default (origin) content`);
+  const marks = page.locator(`#panel-${id} ${hitSel}`);
+  const markCount = await marks.count();
+  let target = null; let expectLabel = '';
+  for (let i = Math.min(1, markCount - 1); i < markCount; i++) {
+    const m = marks.nth(i);
+    const label = ((await m.getAttribute('aria-label')) ?? '').trim();
+    const stage = label.split(',')[0].trim();
+    if (stage && stage !== defaultTitle) { target = m; expectLabel = stage; break; }
+  }
+  if (!target) {
+    if (markCount > 1) { target = marks.nth(1); }
+    else if (markCount === 1) { target = marks.nth(0); }
+  }
+  if (!target) {
+    errors.push(`${id}: no hoverable marks found for the info panel`);
+  } else {
+    await target.scrollIntoViewIfNeeded().catch(() => {});
+    await target.hover({ force: true });
+    await page.waitForTimeout(250);
+    if (((await title.textContent()) ?? '').trim() === defaultTitle) {
+      // Retry with an offset point — a zero-width or occluded mark can miss a center hover.
+      await target.hover({ force: true, position: { x: 4, y: 4 } });
+      await page.waitForTimeout(250);
+    }
+    const hoverTitle = ((await title.textContent()) ?? '').trim();
+    sec.hoverContent = hoverTitle;
+    if (hoverTitle === defaultTitle) errors.push(`${id}: hovering did not change the panel from the default content`);
+    // Note: panel titles intentionally differ from marks' aria-label prefixes
+    // (e.g. a step's title is its name/kind, the label says "step 1") — the
+    // swap assertions are the default-content change above plus revert below.
+    const tipAfterHover = await tooltipAbsent();
+    if (tipAfterHover.tipElements > 0 || tipAfterHover.tipAttributes > 0) errors.push(`${id}: tooltip elements/attributes appeared on hover (elements: ${tipAfterHover.tipElements}, attributes: ${tipAfterHover.tipAttributes})`);
+    await page.screenshot({ path: `${out}/${id}-panel-hover.png` });
+    await page.mouse.move(5, 5); await page.waitForTimeout(300);
+    const revertTitle = ((await title.textContent()) ?? '').trim();
+    sec.revertsOnMouseout = revertTitle === defaultTitle;
+    if (revertTitle !== defaultTitle) errors.push(`${id}: mouse-out left the panel at "${revertTitle}", expected default "${defaultTitle}"`);
+    await page.screenshot({ path: `${out}/${id}-panel-default.png` });
+    await target.focus(); await page.waitForTimeout(250);
+    const focusTitle = ((await title.textContent()) ?? '').trim();
+    sec.focusContent = focusTitle;
+    if (focusTitle === defaultTitle) errors.push(`${id}: focusing did not change the panel from the default content`);
+    await page.mouse.move(5, 5); await page.click(`#tab-${id}`); await page.waitForTimeout(200); // blur → panel reverts
+    await page.selectOption('#theme', 'dark'); await page.waitForTimeout(300);
+    await page.screenshot({ path: `${out}/${id}-panel-dark.png` });
+  }
+}
+
 // Extra screenshots: dark mode across views
 await page.selectOption('#theme', 'dark'); await page.waitForTimeout(200);
 await page.click('#tab-hierarchy'); await page.waitForTimeout(400);
@@ -141,11 +220,12 @@ await page.setViewportSize({ width: 420, height: 800 }); await page.waitForTimeo
 await page.click('#tab-context'); await page.waitForTimeout(500);
 await page.screenshot({ path: `${out}/context-narrow-dark.png` });
 
-const result = { base, banner: { hidden: bannerHidden, text: bannerText.slice(0, 200) }, source: sourceText.slice(0, 200), data: dataUrl, views, sankeyPanel: sPanelInfo, errors };
+const result = { base, banner: { hidden: bannerHidden, text: bannerText.slice(0, 200) }, source: sourceText.slice(0, 200), data: dataUrl, views, sankeyPanel: sPanelInfo, sectionPanels, errors };
 writeFileSync(`${out}/qa-result.json`, JSON.stringify(result, null, 2));
 console.log(JSON.stringify({ banner: result.banner, data: dataUrl }, null, 2));
 console.table(views);
 console.log('sankey panel:', JSON.stringify(sPanelInfo, null, 2));
+console.log('section panels:', JSON.stringify(sectionPanels, null, 2));
 console.log('errors:', errors.length ? errors : 'none');
 await browser.close();
 process.exit(errors.length ? 1 : 0);
