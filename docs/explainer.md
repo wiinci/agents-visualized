@@ -83,6 +83,7 @@ flowchart LR
   D --> E["loops.json<br/>versioned snapshot + labeled fixture"]
   E --> F["Vite + strict TypeScript<br/>D3 · d3-sankey · d3-hierarchy"]
   F --> G["Static dist → hosted report<br/>(no server, no database, cache-safe)"]
+  F --> H["Permanent info panels<br/>(5 sections · origin default ·<br/>hover/focus swap · revert)"]
 ```
 
 No runtime server, no database: the report is a **static build over a validated JSON snapshot**. The "live" question reduces to "when was the snapshot taken," and the answer ships inside the artifact.
@@ -118,6 +119,8 @@ This is the **delegation loop** the Sankey's flow view renders as 43 observed tr
 | Loop model | What *should* happen? | Documented loops, visually distinct from observed data |
 | Summary | What are the headline stats? | Metrics + tables |
 | Tokens & cost | What did it cost (estimated)? | Turn × agent heatmap + cumulative lines, editable assumed rates |
+
+Six of the seven views share one interaction beyond their charts: a **permanent info panel** beside the content (24rem wide from a 900px container breakpoint). It shows the view's origin by default — the project, the trajectory overview, the root dispatcher, overall totals, grand totals — swaps to the hovered or keyboard-focused mark, and reverts on mouse-out or blur. The content revives what the app's former floating tooltips showed, anchored instead of floating so it is readable with a keyboard or a screen reader; nothing floats, and no tooltip DOM exists.
 
 ## 8. Progression — how the main view earned its shape
 

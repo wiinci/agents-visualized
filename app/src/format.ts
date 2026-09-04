@@ -49,6 +49,13 @@ export const KIND_LABEL: Record<NodeKind, string> = {
   task: 'task', 'worker-thread': 'worker thread', wake: 'wake', phase: 'phase (documented)',
 };
 
+/** Kinds whose text is code/JSON — rendered monospace in the info panels' text blocks. */
+export function isCodeLike(node: LoopNode): boolean {
+  if (node.kind === 'tool-call' || node.kind === 'tool-result') return true;
+  const t = node.meta?.fullText ?? node.meta?.excerpt ?? '';
+  return /^\s*[[{]/.test(t);
+}
+
 export function stageLabel(stage: string): string {
   return stage.startsWith('tool:') ? `tool: ${stage.slice(5)}` : stage;
 }

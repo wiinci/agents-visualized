@@ -3,13 +3,15 @@ import type { LoopsDataset } from '../types';
 import { collectThreads, type StepRef } from '../data';
 import { agentColor, fmtCompact, fmtInt, nodeAriaLabel } from '../format';
 import { el, makeRoving, onResize } from '../util';
+import { createInfoPanel, nodePanel, withCostRow, wireInfoPanel } from '../panel';
 
 /**
  * Small multiples, one per thread: contextChars (cumulative characters of
  * everything earlier in the thread) over step index. The area shows context
  * growth; bars underneath show each step's own size (chars). Turn boundaries
  * are marked with vertical rules. Points are focusable and carry the step's
- * name and sizes in their aria-label.
+ * name and sizes in their aria-label; hovering or focusing a point swaps the
+ * section's info panel to that step (default: a trajectory overview).
  */
 export function renderContext(container: HTMLElement, ds: LoopsDataset): void {
   container.replaceChildren();
@@ -19,10 +21,48 @@ export function renderContext(container: HTMLElement, ds: LoopsDataset): void {
   const globalMax = d3.max(threads, (t) => d3.max(t.steps, (s) => s.node.meta?.contextChars ?? 0)) ?? 1;
   const note = el('p', { class: 'view-note' },
     `One panel per thread (${threads.length}). Line/area = context size (chars) at each step; bars = that step's own size; dashed rules = turn boundaries. `,
-    `Shared y-axis (max ${fmtCompact(globalMax)} chars) so threads are comparable.`);
+    `Shared y-axis (max ${fmtCompact(globalMax)} chars) so threads are comparable. Hovering or focusing a point swaps the info panel to that step.`);
   const grid = el('div', { class: 'multiples' });
-  container.append(note, grid);
 
+  // Info panel, modelled on the Sankey view's: a trajectory overview by
+  // default, a hovered/focused step's details otherwise — the content the
+  // former tooltips composed for this section (node fields plus thread-step
+  // position and turn). One panel serves every card.
+  const stepById = new Map<string, { s: StepRef; total: number }>();
+  for (const t of threads) for (const s of t.steps) stepById.set(s.node.id, { s, total: t.steps.length });
+  const totalSteps = threads.reduce((n, t) => n + t.steps.length, 0);
+  const largestFinal = threads.reduce((best, t) => {
+    const last = t.steps[t.steps.length - 1];
+    const end = (last?.node.meta?.contextChars ?? 0) + (last?.node.meta?.chars ?? 0);
+    return end > best.end ? { thread: t.thread.name, end } : best;
+  }, { thread: '', end: -1 });
+  const panel = createInfoPanel({
+    headingId: 'context-panel-title',
+    heading: 'Step details',
+    contentFor: (key) => {
+      const found = stepById.get(key);
+      if (!found) return null;
+      return withCostRow(
+        nodePanel(found.s.node, [['thread step', `#${found.s.globalStepIndex} of ${found.total}`], ['turn', found.s.turn.name]]),
+        found.s.node.meta?.tokensEst, found.s.node.meta?.agent,
+      );
+    },
+    defaultContent: () => ({
+      title: 'Context trajectories',
+      badges: [{ text: `${fmtInt(threads.length)} threads` }],
+      rows: [
+        ['threads with steps', fmtInt(threads.length)],
+        ['steps with context data', fmtInt(totalSteps)],
+        ['largest context at a step', `${fmtCompact(globalMax)} chars — the shared y max`],
+        ['largest context at a thread end', `${fmtCompact(largestFinal.end)} chars (${largestFinal.thread})`],
+        ['interaction', 'hover or focus a point for that step'],
+      ],
+    }),
+  });
+  const layout = el('div', { class: 'info-layout' }, grid, panel.root);
+  container.append(note, layout);
+
+  const hosts: HTMLElement[] = [];
   for (const t of threads) {
     const agent = t.thread.meta?.agent ?? t.steps.find((s) => s.node.meta?.agent !== 'user')?.node.meta?.agent;
     const last = t.steps[t.steps.length - 1]?.node.meta;
@@ -34,6 +74,7 @@ export function renderContext(container: HTMLElement, ds: LoopsDataset): void {
     const host = el('div', { class: 'chart-host', role: 'group', 'aria-label': `Context growth for ${t.thread.name}; arrow keys move between steps` });
     card.append(cap, host);
     grid.append(card);
+    hosts.push(host);
 
     const draw = (width: number): void => {
       host.replaceChildren();
@@ -90,4 +131,5 @@ export function renderContext(container: HTMLElement, ds: LoopsDataset): void {
 
     onResize(host, draw);
   }
+  wireInfoPanel(hosts, panel);
 }
