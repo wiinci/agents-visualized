@@ -5,7 +5,7 @@ Every instruction the user (Mardav Wala) gave in this project's dialog, extracte
 - **Typed prompts** are the user's own words.
 - **Decision checkpoints** are choices the user made in the interface (mode switches, approval cards, question cards); the platform records these as system-written summaries, quoted as stored.
 
-There are 40 typed prompts and 9 recorded decision checkpoints.
+There are 41 typed prompts and 9 recorded decision checkpoints.
 
 ## Typed prompts
 
@@ -178,6 +178,9 @@ There are 40 typed prompts and 9 recorded decision checkpoints.
 
 > chek your internal “dialog” for accurate user prompts
 
+### 41 · 2026-11-21 01:59 UTC
+
+> cool implement this now and then update the wiinci/agents-visualized repo as well with the new findings - remember to use discriminated unions for types a such to keep these validations in type itself. be brave
 
 ## Decision checkpoints
 

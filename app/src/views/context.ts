@@ -7,8 +7,9 @@ import { createInfoPanel, nodePanel, withCostRow, wireInfoPanel } from '../panel
 
 /**
  * Small multiples, one per thread: contextChars (cumulative characters of
- * everything earlier in the thread) over step index. The area shows context
- * growth; bars underneath show each step's own size (chars). Turn boundaries
+ * everything earlier in the thread) over step index. The line carries the
+ * trajectory; bars underneath show each step's own size (chars) — no area
+ * fill, which added unwarranted ink without information. Turn boundaries
  * are marked with vertical rules. Points are focusable and carry the step's
  * name and sizes in their aria-label; hovering or focusing a point swaps the
  * section's info panel to that step (default: a trajectory overview).
@@ -109,9 +110,7 @@ export function renderContext(container: HTMLElement, ds: LoopsDataset): void {
         .attr('y', (s) => y(s.node.meta?.chars ?? 0)).attr('height', (s) => y(0) - y(s.node.meta?.chars ?? 0))
         .attr('fill', (s) => agentColor(s.node.meta?.agent)).attr('fill-opacity', 0.35);
 
-      const area = d3.area<StepRef>().x((_, i) => x(i)).y0(y(0)).y1((s) => y(ctxAt(s)));
       const line = d3.line<StepRef>().x((_, i) => x(i)).y((s) => y(ctxAt(s)));
-      svg.append('path').datum(t.steps).attr('class', 'ctx-area').attr('fill', agentColor(agent)).attr('fill-opacity', 0.18).attr('d', area);
       svg.append('path').datum(t.steps).attr('class', 'ctx-line').attr('fill', 'none').attr('stroke', agentColor(agent)).attr('stroke-width', 2).attr('d', line);
 
       // Focusable points (radius grows with own size so hit targets are usable)

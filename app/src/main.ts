@@ -21,7 +21,7 @@ const VIEWS: ViewDef[] = [
   { id: 'delegation', label: '4 · Delegation tree', blurb: 'Root task → subtasks → worker threads, by status, sized by prompt.', render: renderDelegation },
   { id: 'loops', label: '5 · Documented loop model', blurb: 'The five canonical loops as directed cycles — the model, not the observation.', render: renderLoopModel },
   { id: 'summary', label: '6 · Summary', blurb: 'Per-agent, per-tool and per-turn totals.', render: renderSummary },
-  { id: 'tokens', label: '7 · Tokens & cost', blurb: 'Estimated tokens per turn and agent — heatmap plus cumulative lines or stacked areas, with an assumed-rate cost estimate (never measured usage).', render: renderTokens },
+  { id: 'tokens', label: '7 · Tokens & cost', blurb: 'Estimated tokens per turn and agent — heatmap plus overlaid lines or per-agent small multiples, with an assumed-rate cost estimate (never measured usage).', render: renderTokens },
 ];
 
 function byId<T extends HTMLElement>(id: string): T {

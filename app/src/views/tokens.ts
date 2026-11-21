@@ -15,9 +15,9 @@ import { createInfoPanel, wireInfoPanel, type PanelContent } from '../panel';
  *    scale drawn with `light-dark()` so it adapts to both colour schemes
  *    (@chaytha/d3-heatmap + @d3/calendar conventions; legend after
  *    @d3/color-legend, as a CSS gradient of `light-dark()` stops).
- * 2. Cumulative line chart (x = global turn index, one line per agent) with a
- *    stacked-area toggle — nearest-point highlight and crosshair after
- *    @d3/multi-line-chart/2, stacking after @d3/tidy-stacked-area-chart.
+ * 2. Cumulative trend (x = global turn index): overlaid lines, or per-agent
+ *    small multiples on a shared y-scale (pattern proven in context.ts) —
+ *    nearest-point highlight and crosshair after @d3/multi-line-chart/2.
  *
  * Numbers are per-turn token ESTIMATES (chars ÷ 4). Cost = estimated tokens ×
  * an assumed, editable rate (cost.ts) — never measured, never provider data.
@@ -30,7 +30,7 @@ type Metric = 'tokens' | 'cost';
 
 // Selections survive rate-change re-renders (module-scoped: one app, one view instance).
 let metric: Metric = 'tokens';
-let stacked = false;
+let mode: 'lines' | 'multiples' = 'lines';
 let focusAfter: 'metric' | 'mode' | null = null;
 
 const cellKey = (threadId: string, turnIndex: number, agent: string): string => `${threadId}#${turnIndex}|${agent}`;
@@ -123,9 +123,9 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
   metricSel.addEventListener('change', () => { metric = metricSel.value === 'cost' ? 'cost' : 'tokens'; focusAfter = 'metric'; renderTokens(container, ds); });
 
   const modeSel = el('select', { id: 'tok-mode', class: 'select' });
-  modeSel.append(el('option', { value: 'lines' }, 'cumulative lines'), el('option', { value: 'stacked' }, 'stacked areas (total)'));
-  modeSel.value = stacked ? 'stacked' : 'lines';
-  modeSel.addEventListener('change', () => { stacked = modeSel.value === 'stacked'; focusAfter = 'mode'; renderTokens(container, ds); });
+  modeSel.append(el('option', { value: 'lines' }, 'overlaid lines'), el('option', { value: 'multiples' }, 'per-agent multiples'));
+  modeSel.value = mode;
+  modeSel.addEventListener('change', () => { mode = modeSel.value === 'multiples' ? 'multiples' : 'lines'; focusAfter = 'mode'; renderTokens(container, ds); });
 
   // Info panel, modelled on the Sankey view's: grand totals by default, a
   // hovered/focused heatmap cell or line-chart turn column otherwise — the
@@ -159,7 +159,7 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
       el('strong', {}, 'Everything here is estimated'), ' — tokens = characters ÷ 4, cost = estimated tokens × an assumed rate (edit it under ', el('em', {}, 'Rates'), ' in the header). Hovering or focusing a heatmap cell or line column swaps the panel to that turn.'),
     el('div', { class: 'toolbar' },
       el('label', { class: 'sankey-metric', for: 'tok-metric' }, 'Metric: ', metricSel),
-      el('label', { class: 'sankey-metric', for: 'tok-mode' }, 'Line chart: ', modeSel),
+      el('label', { class: 'sankey-metric', for: 'tok-mode' }, 'Trend: ', modeSel),
     ),
     layout,
   );
@@ -251,6 +251,20 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
           .attr('data-hit', 'cell').attr('data-key', cellKey(t.threadId, t.turnIndex, a))
           .attr('tabindex', -1).attr('role', 'button')
           .attr('aria-label', `${a} in turn ${t.turnIndex + 1} of ${name}: ${fmtVal(shown)}${metric === 'cost' ? ' (assumed rate)' : ' (est.)'}`);
+        // Self-revealing data: the value prints on its own mark. Ink switches
+        // by scale position (t > ~0.55 = dark fill → light ink, theme-aware
+        // via light-dark()); zero prints muted; narrow columns suppress text
+        // rather than clip it.
+        if (colW >= 44) {
+          const tPos = shown / Math.max(1, maxCell);
+          svg.append('text')
+            .attr('class', 'tok-cellval')
+            .attr('x', x + Math.max(2, colW - 3) / 2).attr('y', y + rowH / 2 + 4)
+            .attr('text-anchor', 'middle')
+            .attr('fill', v === 0 ? 'var(--fg-muted)' : tPos > 0.55 ? 'light-dark(#f8fafc, #0b1220)' : 'var(--fg)')
+            .attr('aria-hidden', 'true')
+            .text(v === 0 ? '0' : fmtValCompact(shown));
+        }
       });
     });
 
@@ -273,7 +287,7 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
 
   onResize(heatHost, drawHeat);
 
-  // ── 2. Cumulative line / stacked-area chart ────────────────────────────
+  // ── 2. Cumulative trend: overlaid lines | per-agent multiples ───────────
   // Per agent: delta per turn slot + running cumulative (flat where the agent did nothing).
   interface Series { agent: string; delta: number[]; cum: number[] }
   const series: Series[] = agents.map((a) => {
@@ -285,18 +299,13 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
   const totals = turns.map((_, i) => d3.sum(series, (s) => s.cum[i] ?? 0));
 
   const lineHost = el('div', { class: 'chart-host tok-chart', role: 'group', 'aria-label': 'Cumulative estimated tokens by agent over turn index; arrow keys move between turns' });
-  col.append(el('h3', {}, stacked ? 'Stacked area — cumulative consumption, all agents' : 'Cumulative tokens est. by agent'), lineHost);
+  col.append(el('h3', {}, mode === 'multiples' ? 'Small multiples — cumulative consumption per agent' : 'Cumulative tokens est. by agent'), lineHost);
   col.append(el('p', { class: 'view-note muted small' },
     'X = turn index in global start-time order (not wall-clock time — turns have very different durations). ',
-    stacked
-      ? 'Bands stack each agent\u2019s cumulative total, so the top edge is overall consumption. '
+    mode === 'multiples'
+      ? 'One panel per agent plus an all-agents total, every panel on the same y-scale so they are comparable; panel titles carry identity. '
       : 'Each line is one agent\u2019s running total; labels sit at line ends where they fit. ',
-    'Hover, or focus a turn with the keyboard, to highlight that turn\u2019s crosshair and per-agent points and swap the panel to that turn.'));
-
-  // Agent legend (colour + text, never colour alone)
-  const legend = el('div', { class: 'legend', role: 'list', 'aria-label': 'Agent colours' });
-  for (const s of series) legend.append(el('span', { class: 'legend-item', role: 'listitem' }, el('i', { class: 'swatch', style: `--c:${agentColor(s.agent)}` }), s.agent));
-  col.append(legend);
+    'Hover, or focus a turn with the keyboard, to highlight that turn\u2019s crosshair and points and swap the panel to that turn.'));
 
   // Geometry + focus hooks refreshed by each drawLine; the interaction listeners below
   // are attached to lineHost ONCE (drawLine re-runs on resize and must not stack them).
@@ -306,99 +315,169 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
 
   const drawLine = (width: number): void => {
     lineHost.replaceChildren();
-    const m = { top: 16, right: 120, bottom: 40, left: 64 };
-    const height = 340;
     const n = turns.length;
-    const yMax = d3.max(stacked ? totals : series.flatMap((s) => s.cum.map((c) => c ?? 0))) ?? 1;
-    const x = d3.scaleLinear().domain([0, Math.max(1, n - 1)]).range([m.left, width - m.right]);
-    const y = d3.scaleLinear().domain([0, yMax]).nice().range([height - m.bottom, m.top]);
+    const cumLabel = `cumulative ${unitLabel}`;
+    type Sel<T extends d3.BaseType> = d3.Selection<T, undefined, null, undefined>;
+    interface Panel { label: string; color: string; values: number[] }
 
-    const svg = d3.create('svg').attr('viewBox', `0 0 ${width} ${height}`).attr('width', width).attr('height', height)
-      .attr('role', 'img').attr('aria-label', stacked ? 'Stacked area of cumulative estimated consumption by agent' : 'Cumulative estimated tokens per agent over turns');
-    svg.append('text').attr('class', 'axis-label').attr('x', width - m.right).attr('y', height - 6).attr('text-anchor', 'end').text('turn index (start-time order) →');
-    svg.append('text').attr('class', 'axis-label').attr('x', m.left).attr('y', m.top - 2).text(stacked ? 'cumulative consumption' : 'cumulative tokens');
+    if (mode === 'lines') {
+      const m = { top: 16, right: 120, bottom: 40, left: 64 };
+      const height = 340;
+      const yMax = d3.max(totals) ?? 1;
+      const x = d3.scaleLinear().domain([0, Math.max(1, n - 1)]).range([m.left, width - m.right]);
+      const y = d3.scaleLinear().domain([0, yMax]).nice().range([height - m.bottom, m.top]);
 
-    svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${height - m.bottom})`)
-      .call(d3.axisBottom(x).ticks(n).tickFormat((d) => `#${(d as number) + 1}`));
-    svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.left},0)`)
-      .call(d3.axisLeft(y).ticks(5).tickFormat((d) => (metric === 'cost' ? fmtCost(d as number) : fmtCompact(d as number))))
-      .call((g) => g.selectAll('.tick line').clone().attr('x2', width - m.left - m.right).attr('stroke-opacity', 0.1).attr('class', 'tok-gridline'));
+      const svg = d3.create('svg').attr('viewBox', `0 0 ${width} ${height}`).attr('width', width).attr('height', height)
+        .attr('role', 'img').attr('aria-label', 'Cumulative estimated tokens per agent over turns');
+      svg.append('text').attr('class', 'axis-label').attr('x', width - m.right).attr('y', height - 6).attr('text-anchor', 'end').text('turn index (start-time order) →');
+      svg.append('text').attr('class', 'axis-label').attr('x', m.left).attr('y', m.top - 2).text(cumLabel);
 
-    // Bands for stacked mode: manual cumulative stacking in agent-column order.
-    const bandLower: number[][] = agents.map(() => []);
-    const bandUpper: number[][] = agents.map(() => []);
-    if (stacked) {
-      const acc: number[] = turns.map(() => 0);
-      series.forEach((s, k) => {
-        turns.forEach((_, i) => {
-          const lower = acc[i] ?? 0;
-          const upper = lower + (s.cum[i] ?? 0);
-          bandLower[k]![i] = lower;
-          bandUpper[k]![i] = upper;
-          acc[i] = upper;
+      svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${height - m.bottom})`)
+        .call(d3.axisBottom(x).ticks(n).tickFormat((d) => `#${(d as number) + 1}`));
+      svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.left},0)`)
+        .call(d3.axisLeft(y).ticks(5).tickFormat((d) => (metric === 'cost' ? fmtCost(d as number) : fmtCompact(d as number))))
+        .call((g) => g.selectAll('.tick line').clone().attr('x2', width - m.left - m.right).attr('stroke-opacity', 0.1).attr('class', 'tok-gridline'));
+
+      series.forEach((s) => {
+        const line = d3.line<number>().x((_, i) => x(i)).y((_, i) => y(s.cum[i] ?? 0));
+        svg.append('path').datum(d3.range(n)).attr('fill', 'none')
+          .attr('stroke', agentColor(s.agent)).attr('stroke-width', 2)
+          .attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round')
+          .attr('class', 'tok-line').attr('d', line);
+      });
+
+      // Direct labels at line ends (@d3/multi-line-chart/2 hover-label
+      // convention) — identity lives at the mark, so no legend is needed.
+      const placedY: number[] = [];
+      series.forEach((s) => {
+        const last = n - 1;
+        const rawY = y(s.cum[last] ?? 0);
+        const yPos = Math.max(m.top + 8, Math.min(height - m.bottom - 4, rawY));
+        const clash = placedY.some((py) => Math.abs(py - yPos) < 13);
+        const label = svg.append('text').attr('class', 'tok-endlabel').attr('x', x(last) + 8).attr('y', yPos + 4)
+          .attr('fill', agentColor(s.agent)).text(s.agent);
+        if (clash) label.style('display', 'none');
+        else placedY.push(yPos);
+      });
+
+      const step = n > 1 ? (x(1) - x(0)) : width - m.left - m.right;
+      const crosshair = svg.append('line').attr('class', 'tok-crosshair').attr('y1', m.top).attr('y2', height - m.bottom).style('display', 'none');
+      const dots = svg.append('g').style('display', 'none');
+      const showFocus = (i: number): void => {
+        const cx = x(n > 1 ? i : 0);
+        crosshair.attr('x1', cx).attr('x2', cx).style('display', null);
+        dots.style('display', null).selectAll('circle').data(series).join('circle')
+          .attr('cx', cx).attr('cy', (s) => y(s.cum[i] ?? 0)).attr('r', 3.5)
+          .attr('fill', (s) => agentColor(s.agent)).attr('stroke', 'var(--bg)').attr('stroke-width', 1.5);
+      };
+      const hideFocus = (): void => { crosshair.style('display', 'none'); dots.style('display', 'none'); };
+
+      turns.forEach((t, i) => {
+        svg.append('rect')
+          .attr('class', 'tok-hit').attr('x', m.left + (n > 1 ? step * i - step / 2 : 0)).attr('y', m.top)
+          .attr('width', n > 1 ? step : width - m.left - m.right).attr('height', height - m.top - m.bottom)
+          .attr('fill', 'transparent')
+          .attr('data-hit', 'turn').attr('data-key', String(i))
+          .attr('tabindex', -1).attr('role', 'button')
+          .attr('aria-label', `Turn ${i + 1} (${names.get(t.threadId) ?? t.threadId}): total ${fmtVal(totals[i] ?? 0)} ${metric === 'cost' ? '(assumed rate)' : '(est.)'}`);
+      });
+      lineHost.append(svg.node()!);
+
+      lineGeom = { left: m.left, step, n };
+      showFocusFn = showFocus;
+      hideFocusFn = hideFocus;
+    } else {
+      // Per-agent small multiples + one all-agents total, all on ONE shared
+      // y-scale (the pattern proven in context.ts) — replaces the former
+      // stacked-area bands, which hid each agent's own trajectory.
+      const panels: Panel[] = [
+        ...series.map((s): Panel => ({ label: s.agent, color: agentColor(s.agent), values: s.cum })),
+        { label: 'all agents', color: 'var(--fg)', values: totals },
+      ];
+      const yMax = d3.max(totals) ?? 1;
+      const m = { top: 24, right: 120, bottom: 40, left: 64 };
+      const titleH = 18;
+      const plotH = 120;
+      const gap = 14;
+      const height = m.top + panels.length * (titleH + plotH + gap) - gap + m.bottom;
+      const x = d3.scaleLinear().domain([0, Math.max(1, n - 1)]).range([m.left, width - m.right]);
+      const step = n > 1 ? (x(1) - x(0)) : width - m.left - m.right;
+
+      const svg = d3.create('svg').attr('viewBox', `0 0 ${width} ${height}`).attr('width', width).attr('height', height)
+        .attr('role', 'img').attr('aria-label', 'Small multiples of cumulative estimated tokens per agent on a shared scale, plus an all-agents total panel');
+      svg.append('text').attr('class', 'axis-label').attr('x', m.left).attr('y', m.top - 12).text(cumLabel);
+      svg.append('text').attr('class', 'axis-label').attr('x', width - m.right).attr('y', height - 6).attr('text-anchor', 'end').text('turn index (start-time order) →');
+
+      const crosshairs: Sel<SVGLineElement>[] = [];
+      const dotGroups: { dots: Sel<SVGGElement>; y: d3.ScaleLinear<number, number>; p: Panel }[] = [];
+
+      panels.forEach((p, k) => {
+        const blockTop = m.top + k * (titleH + plotH + gap);
+        const titleY = blockTop + 10;
+        const top = blockTop + titleH;
+        const bottom = top + plotH;
+        const y = d3.scaleLinear().domain([0, yMax]).nice().range([bottom, top]);
+
+        // Panel title: colour swatch + agent name — identity at the panel,
+        // never a remote legend.
+        svg.append('circle').attr('cx', m.left + 5).attr('cy', titleY - 4).attr('r', 5).attr('fill', p.color).attr('aria-hidden', 'true');
+        svg.append('text').attr('class', 'tok-colhead').attr('x', m.left + 15).attr('y', titleY).text(p.label);
+
+        svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.left},0)`)
+          .call(d3.axisLeft(y).ticks(3).tickFormat((d) => (metric === 'cost' ? fmtCost(d as number) : fmtCompact(d as number))));
+
+        const line = d3.line<number>().x((_, i) => x(i)).y((_, i) => y(p.values[i] ?? 0));
+        svg.append('path').datum(d3.range(n)).attr('fill', 'none')
+          .attr('stroke', p.color).attr('stroke-width', 2)
+          .attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round')
+          .attr('class', 'tok-line').attr('d', line);
+
+        // End label carries the panel's final VALUE — the number at the mark.
+        svg.append('text').attr('class', 'tok-endlabel').attr('x', x(n - 1) + 8).attr('y', y(p.values[n - 1] ?? 0) + 4)
+          .attr('fill', p.color).text(fmtValCompact(p.values[n - 1] ?? 0));
+
+        const cross = svg.append('line').attr('class', 'tok-crosshair').attr('y1', top).attr('y2', bottom).style('display', 'none');
+        const dots = svg.append('g').style('display', 'none');
+        crosshairs.push(cross);
+        dotGroups.push({ dots, y, p });
+
+        // Hit columns per panel: turn:i keys unchanged from the lines mode.
+        turns.forEach((t, i) => {
+          svg.append('rect')
+            .attr('class', 'tok-hit').attr('x', m.left + (n > 1 ? step * i - step / 2 : 0)).attr('y', top)
+            .attr('width', n > 1 ? step : width - m.left - m.right).attr('height', plotH)
+            .attr('fill', 'transparent')
+            .attr('data-hit', 'turn').attr('data-key', String(i))
+            .attr('tabindex', -1).attr('role', 'button')
+            .attr('aria-label', `Turn ${i + 1} (${names.get(t.threadId) ?? t.threadId}): total ${fmtVal(totals[i] ?? 0)} ${metric === 'cost' ? '(assumed rate)' : '(est.)'}`);
         });
       });
+
+      // X-axis ticks once, under the last panel — every panel shares the x scale.
+      const lastBottom = m.top + (panels.length - 1) * (titleH + plotH + gap) + titleH + plotH;
+      svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${lastBottom})`)
+        .call(d3.axisBottom(x).ticks(n).tickFormat((d) => `#${(d as number) + 1}`));
+
+      const showFocus = (i: number): void => {
+        const cx = x(n > 1 ? i : 0);
+        crosshairs.forEach((c) => c.attr('x1', cx).attr('x2', cx).style('display', null));
+        dotGroups.forEach(({ dots, y, p }) => {
+          dots.style('display', null).selectAll('circle').data([p]).join('circle')
+            .attr('cx', cx).attr('cy', (q) => y(q.values[i] ?? 0)).attr('r', 3.5)
+            .attr('fill', (q) => q.color).attr('stroke', 'var(--bg)').attr('stroke-width', 1.5);
+        });
+      };
+      const hideFocus = (): void => {
+        crosshairs.forEach((c) => c.style('display', 'none'));
+        dotGroups.forEach(({ dots }) => dots.style('display', 'none'));
+      };
+
+      lineHost.append(svg.node()!);
+      lineGeom = { left: m.left, step, n };
+      showFocusFn = showFocus;
+      hideFocusFn = hideFocus;
     }
 
-    const valAt = (s: Series, i: number): number => (stacked ? bandUpper[agents.indexOf(s.agent)]?.[i] ?? 0 : s.cum[i] ?? 0);
-
-    // Marks: areas underneath (stacked mode), lines on top (both modes, thin under stacked).
-    if (stacked) {
-      series.forEach((s, k) => {
-        const area = d3.area<number>().x((_, i) => x(i)).y0((_, i) => y(bandLower[k]?.[i] ?? 0)).y1((_, i) => y(bandUpper[k]?.[i] ?? 0));
-        svg.append('path').datum(d3.range(n)).attr('fill', agentColor(s.agent)).attr('fill-opacity', 0.8)
-          .attr('class', 'tok-area').attr('d', area);
-      });
-    }
-    series.forEach((s) => {
-      const line = d3.line<number>().x((_, i) => x(i)).y((_, i) => y(valAt(s, i)));
-      svg.append('path').datum(d3.range(n)).attr('fill', 'none')
-        .attr('stroke', agentColor(s.agent)).attr('stroke-width', stacked ? 1.25 : 2)
-        .attr('stroke-linejoin', 'round').attr('stroke-linecap', 'round')
-        .attr('class', 'tok-line').attr('d', line);
-    });
-
-    // Direct labels at line ends (@d3/multi-line-chart/2 hover-label convention), hidden on collision.
-    const placedY: number[] = [];
-    series.forEach((s) => {
-      const last = n - 1;
-      const rawY = y(valAt(s, last));
-      const yPos = Math.max(m.top + 8, Math.min(height - m.bottom - 4, rawY));
-      const clash = placedY.some((py) => Math.abs(py - yPos) < 13);
-      const label = svg.append('text').attr('class', 'tok-endlabel').attr('x', x(last) + 8).attr('y', yPos + 4)
-        .attr('fill', agentColor(s.agent)).text(s.agent);
-      if (clash) label.style('display', 'none');
-      else placedY.push(yPos);
-    });
-
-    // Focus/hover layer: one full-height hit column per turn (keyboard arrows work
-    // like the notebook's nearest-point pointer, but focusable for a11y).
-    const step = n > 1 ? (x(1) - x(0)) : width - m.left - m.right;
-    const crosshair = svg.append('line').attr('class', 'tok-crosshair').attr('y1', m.top).attr('y2', height - m.bottom).style('display', 'none');
-    const dots = svg.append('g').style('display', 'none');
-    const showFocus = (i: number): void => {
-      const cx = x(n > 1 ? i : 0);
-      crosshair.attr('x1', cx).attr('x2', cx).style('display', null);
-      dots.style('display', null).selectAll('circle').data(series).join('circle')
-        .attr('cx', cx).attr('cy', (s) => y(valAt(s, i))).attr('r', 3.5)
-        .attr('fill', (s) => agentColor(s.agent)).attr('stroke', 'var(--bg)').attr('stroke-width', 1.5);
-    };
-    const hideFocus = (): void => { crosshair.style('display', 'none'); dots.style('display', 'none'); };
-
-    turns.forEach((t, i) => {
-      svg.append('rect')
-        .attr('class', 'tok-hit').attr('x', m.left + (n > 1 ? step * i - step / 2 : 0)).attr('y', m.top)
-        .attr('width', n > 1 ? step : width - m.left - m.right).attr('height', height - m.top - m.bottom)
-        .attr('fill', 'transparent')
-        .attr('data-hit', 'turn').attr('data-key', String(i))
-        .attr('tabindex', -1).attr('role', 'button')
-        .attr('aria-label', `Turn ${i + 1} (${names.get(t.threadId) ?? t.threadId}): total ${fmtVal(totals[i] ?? 0)} ${metric === 'cost' ? '(assumed rate)' : '(est.)'}`);
-    });
-    lineHost.append(svg.node()!);
-
-    lineGeom = { left: m.left, step, n };
-    showFocusFn = showFocus;
-    hideFocusFn = hideFocus;
     if (!lineHost.dataset.bound) {
       lineHost.dataset.bound = '1';
       lineHost.addEventListener('pointermove', (e) => {
@@ -418,6 +497,7 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
     }
     makeRoving(lineHost, '[data-hit]');
   };
+
   onResize(lineHost, drawLine);
 
   // Honest-labelling footnote (also the schema gap note: stats.turns carries no thread display name).
