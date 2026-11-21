@@ -1,16 +1,22 @@
 import * as d3 from 'd3'
 import type {LoopNode, LoopsDataset} from '../types'
-import {collectThreads, turnKey} from '../data'
-import {agentColor, fmtInt, fmtTime} from '../format'
+import {buildThreadNames, collectThreads, turnKey} from '../data'
+import {
+	agentColor,
+	agentDisplayName,
+	fmtCompact,
+	fmtInt,
+	fmtTime,
+} from '../format'
 import {costOf, fmtCost, fmtRate, onRatesChange, rateFor} from '../cost'
 import {el} from '../util'
 import {createInfoPanel, nodePanel, wireInfoPanel} from '../panel'
 
 /**
- * Summary panel from `stats`: per-agent totals, per-tool totals (with inline
- * bars so sizes are visible, not only numeric), and the turns table. Hovering
- * or focusing a turn row swaps the info panel to that turn (default: overall
- * totals). Plain HTML tables are the accessible alternative to the SVG views.
+ * Appendix — Complete empirical ledger from `stats`:
+ * Per-agent and Per-tool tables sit side-by-side at full spread width; the
+ * turn-by-turn ledger sits beside its own sticky marginalia column.
+ * (Headline KPIs live in the article masthead.)
  */
 export function renderSummary(
 	container: HTMLElement,
@@ -18,8 +24,10 @@ export function renderSummary(
 ): () => void {
 	container.replaceChildren()
 	const {agents, tools, turns} = ds.stats
+	const threadNames = buildThreadNames(ds)
+	const threadFull = (tid: string) => threadNames.get(tid)?.full ?? tid
+	const threadShort = (tid: string) => threadNames.get(tid)?.short ?? tid
 
-	// Index turn → its opening user message node, for the info panel's prompt text.
 	const turnNodes = new Map<
 		string,
 		{turn: LoopNode; prompt: LoopNode | undefined}
@@ -41,111 +49,77 @@ export function renderSummary(
 		toolCalls: d3.sum(tools, t => t.calls),
 		errors: d3.sum(tools, t => t.errors),
 	}
-	const kpis = el('div', {class: 'kpis'})
-	const kpi = (label: string, value: string, sub?: string) =>
+
+	// ── Side-by-side full-spread tables: Per agent | Per tool ───────────────
+	const maxAgentChars = d3.max(agents, a => a.chars) ?? 1
+	const agentBlock = el(
+		'div',
+		{class: 'summary-block'},
+		el('h3', {}, 'Per agent'),
 		el(
 			'div',
-			{class: 'kpi'},
-			el('div', {class: 'kpi-value'}, value),
-			el('div', {class: 'kpi-label'}, label),
-			...(sub ? [el('div', {class: 'muted small'}, sub)] : []),
-		)
-	kpis.append(
-		kpi(
-			'threads',
-			fmtInt(ds.source.threadIds.length),
-			`${fmtInt(ds.source.messageCount)} messages`,
-		),
-		kpi(
-			'turns',
-			fmtInt(turns.length),
-			`${fmtInt(d3.sum(turns, t => t.steps))} steps`,
-		),
-		kpi(
-			'tool calls',
-			fmtInt(totals.toolCalls),
-			`${fmtInt(totals.errors)} errors`,
-		),
-		kpi(
-			'characters',
-			fmtInt(totals.chars),
-			`≈${fmtInt(totals.tokens)} tokens (est.)`,
-		),
-		kpi(
-			'cost (est.)',
-			fmtCost(d3.sum(agents, a => costOf(a.tokensEst, a.agent))),
-			`assumed rate (${fmtRate(rateFor(undefined))} default) — not provider data`,
-		),
-		kpi(
-			'largest context',
-			fmtInt(d3.max(turns, t => t.contextCharsAtEnd) ?? 0),
-			'chars at end of a turn',
-		),
-	)
-	container.append(kpis)
-
-	// Per-agent table
-	const maxAgentChars = d3.max(agents, a => a.chars) ?? 1
-	container.append(el('h3', {}, 'Per agent'))
-	container.append(
-		table(
-			[
-				'agent',
-				'threads',
-				'turns',
-				'tool calls',
-				'chars',
-				'tokens (est.)',
-				'cost (est.)',
-			],
-			agents.map(a => [
-				el(
-					'span',
-					{},
-					el('i', {class: 'swatch', style: `--c:${agentColor(a.agent)}`}),
-					a.agent,
-				),
-				fmtInt(a.threads),
-				fmtInt(a.turns),
-				fmtInt(a.toolCalls),
-				bar(a.chars, maxAgentChars, agentColor(a.agent)),
-				fmtInt(a.tokensEst),
-				fmtCost(costOf(a.tokensEst, a.agent)),
-			]),
-		),
-	)
-
-	// Per-tool table
-	const maxToolChars = d3.max(tools, t => t.promptChars + t.resultChars) ?? 1
-	container.append(el('h3', {}, 'Per tool'))
-	container.append(
-		table(
-			['tool', 'calls', 'prompt chars (args)', 'result chars', 'errors'],
-			[...tools]
-				.sort((a, b) => b.calls - a.calls)
-				.map(t => [
-					el('code', {}, t.toolName),
-					fmtInt(t.calls),
-					bar(t.promptChars, maxToolChars, '#0f766e'),
-					bar(t.resultChars, maxToolChars, '#0369a1'),
-					t.errors
-						? el('span', {class: 'is-error'}, `✗ ${fmtInt(t.errors)}`)
-						: '0',
+			{class: 'table-scroll'},
+			table(
+				[
+					'Agent',
+					'Threads',
+					'Turns',
+					'Tools',
+					'Characters',
+					'Tokens (est.)',
+					'Cost (est.)',
+				],
+				agents.map(a => [
+					el(
+						'span',
+						{},
+						el('i', {class: 'swatch', style: `--c:${agentColor(a.agent)}`}),
+						agentDisplayName(a.agent),
+					),
+					fmtInt(a.threads),
+					fmtInt(a.turns),
+					fmtInt(a.toolCalls),
+					bar(a.chars, maxAgentChars, agentColor(a.agent)),
+					fmtInt(a.tokensEst),
+					fmtCost(costOf(a.tokensEst, a.agent)),
 				]),
+			),
 		),
 	)
 
-	// Turns table
-	container.append(el('h3', {}, 'Turns'))
+	const maxToolChars = d3.max(tools, t => t.promptChars + t.resultChars) ?? 1
+	const toolBlock = el(
+		'div',
+		{class: 'summary-block'},
+		el('h3', {}, 'Per tool'),
+		el(
+			'div',
+			{class: 'table-scroll'},
+			table(
+				['Tool', 'Calls', 'Args chars', 'Result chars', 'Errors'],
+				[...tools]
+					.sort((a, b) => b.calls - a.calls)
+					.map(t => [
+						el('code', {}, t.toolName),
+						fmtInt(t.calls),
+						bar(t.promptChars, maxToolChars, '#0f766e'),
+						bar(t.resultChars, maxToolChars, '#0369a1'),
+						t.errors
+							? el('span', {class: 'is-error'}, `✗ ${fmtInt(t.errors)}`)
+							: '0',
+					]),
+			),
+		),
+	)
+
+	container.append(el('div', {class: 'summary-pair'}, agentBlock, toolBlock))
+
+	// ── Turns ledger + dedicated sticky marginalia ──────────────────────────
 	const maxCtx = d3.max(turns, t => t.contextCharsAtEnd) ?? 1
 	const turnRows = [...turns].sort((a, b) =>
 		a.startedAt.localeCompare(b.startedAt),
 	)
 
-	// Per-turn context trajectory: per-step meta.contextChars for that turn's
-	// steps, via the collect traversal (thread → turn → step). Keyed like the
-	// info panel (`threadId#turnIndex`). A turn with no step-level context data
-	// has no series — the sparkline cell renders an em dash, never an empty box.
 	const turnCtx = new Map<string, number[]>()
 	for (const [tid, t] of collectThreads(ds.hierarchy)) {
 		const kids = t.thread.children ?? []
@@ -159,98 +133,92 @@ export function renderSummary(
 		}
 	}
 
-	// Info panel, modelled on the Sankey view's: overall totals by default, a
-	// hovered/focused turn row's details otherwise — the content the former
-	// tooltips composed for this section (turn totals plus the opening user
-	// prompt's text). One panel serves the turns table.
 	const totalCost = d3.sum(agents, a => costOf(a.tokensEst, a.agent))
 	const panel = createInfoPanel({
 		headingId: 'summary-panel-title',
-		heading: 'Details',
+		heading: 'Turn details',
 		contentFor: key => {
 			const t = turnRows.find(x => turnKey(x.threadId, x.turnIndex) === key)
 			if (!t) return null
 			const found = turnNodes.get(key)
 			const rows: [string, string][] = [
-				['thread', t.threadId],
-				['agent', t.agent],
+				['thread', threadFull(t.threadId)],
+				['agent', agentDisplayName(t.agent)],
 				['started', fmtTime(t.startedAt)],
 				...(t.endedAt
 					? [['ended', fmtTime(t.endedAt)] as [string, string]]
 					: []),
-				['steps', fmtInt(t.steps)],
-				['tool calls', fmtInt(t.toolCalls)],
-				['chars', fmtInt(t.chars)],
-				['tokens (est.)', `≈${fmtInt(t.tokensEst)}`],
+				['steps / tools', `${fmtInt(t.steps)} / ${fmtInt(t.toolCalls)}`],
+				['volume', `${fmtInt(t.chars)} chars · ≈${fmtInt(t.tokensEst)} tok`],
 				[
-					'cost (est., assumed rate)',
+					'cost (assumed)',
 					`${fmtCost(costOf(t.tokensEst, t.agent))} · ${fmtRate(rateFor(t.agent))}`,
 				],
 				['context at end', `${fmtInt(t.contextCharsAtEnd)} chars`],
 				['user prompt', `${fmtInt(t.userPromptChars)} chars`],
 			]
-			if (found?.prompt) {
-				const content = nodePanel(found.prompt, rows)
-				content.title = found.turn.name
-				content.badges = [{text: 'turn'}, {text: t.agent}]
-				if (content.text)
-					content.text.label = 'User prompt that opened this turn'
-				return content
-			}
+			const content = found?.prompt
+				? nodePanel(found.prompt, [])
+				: {title: '', rows: [] as [string, string][]}
 			return {
-				title: `${t.threadId} · turn ${t.turnIndex + 1}`,
-				badges: [{text: 'turn'}, {text: t.agent}],
+				kicker: `Turn #${t.turnIndex + 1} · ${agentDisplayName(t.agent)}`,
+				title: `${threadFull(t.threadId)} · turn ${t.turnIndex + 1}`,
+				stats: [
+					['Steps', fmtInt(t.steps)],
+					['End context', `${fmtCompact(t.contextCharsAtEnd)} chars`],
+				],
 				rows,
+				text: content.text
+					? {...content.text, label: 'User prompt that opened this turn'}
+					: undefined,
 			}
 		},
 		defaultContent: () => ({
+			kicker: `${fmtInt(turns.length)} turns · ${fmtInt(ds.source.threadIds.length)} threads`,
 			title: 'Overall totals',
-			badges: [
-				{text: `${fmtInt(turns.length)} turns`},
-				{text: `${fmtInt(ds.source.threadIds.length)} threads`},
+			stats: [
+				['Volume', `${fmtCompact(totals.chars)} chars`],
+				['Assumed cost', fmtCost(totalCost)],
 			],
 			rows: [
 				['messages', fmtInt(ds.source.messageCount)],
 				[
-					'steps / tool calls',
+					'steps / tools',
 					`${fmtInt(d3.sum(turns, t => t.steps))} / ${fmtInt(totals.toolCalls)} (${fmtInt(totals.errors)} errors)`,
 				],
-				[
-					'characters',
-					`${fmtInt(totals.chars)} · ≈${fmtInt(totals.tokens)} tokens (est.)`,
-				],
-				[
-					'cost (est., assumed rates)',
-					`${fmtCost(totalCost)} — not provider data`,
-				],
-				['largest context', `${fmtInt(maxCtx)} chars at end of a turn`],
-				['interaction', 'hover or focus a turn row for that turn'],
+				['est. tokens', `≈${fmtInt(totals.tokens)}`],
+				['peak context', `${fmtInt(maxCtx)} chars`],
+				['interaction', 'hover, focus, or click a turn row to pin'],
 			],
 		}),
 	})
+
 	const tbl = table(
 		[
-			'turn',
-			'agent',
-			'started',
-			'steps',
-			'tool calls',
-			'chars',
-			'tokens (est.)',
-			'cost (est.)',
-			'context at end',
-			'context over steps',
-			'user prompt chars',
+			'Turn',
+			'Agent',
+			'Steps',
+			'Tools',
+			'Chars',
+			'Tokens (est.)',
+			'Cost (est.)',
+			'End context',
+			'Trajectory',
 		],
-		turnRows.map(t => [
-			`${t.threadId} #${t.turnIndex + 1}`,
+		turnRows.map((t, idx) => [
+			el(
+				'span',
+				{
+					title: `${threadFull(t.threadId)} · turn ${t.turnIndex + 1} (${t.threadId})`,
+				},
+				`T${idx + 1} · ${threadShort(t.threadId)} #${t.turnIndex + 1}`,
+			),
 			el(
 				'span',
 				{},
 				el('i', {class: 'swatch', style: `--c:${agentColor(t.agent)}`}),
-				t.agent,
+				agentDisplayName(t.agent),
 			),
-			fmtTime(t.startedAt),
 			fmtInt(t.steps),
 			fmtInt(t.toolCalls),
 			fmtInt(t.chars),
@@ -261,7 +229,6 @@ export function renderSummary(
 				turnCtx.get(turnKey(t.threadId, t.turnIndex)) ?? [],
 				agentColor(t.agent),
 			),
-			fmtInt(t.userPromptChars),
 		]),
 		(tr, i) => {
 			const t = turnRows[i]!
@@ -270,16 +237,22 @@ export function renderSummary(
 			tr.setAttribute('tabindex', '0')
 		},
 	)
-	const turnsLayout = el(
+
+	const turnsSection = el(
 		'div',
-		{class: 'info-layout'},
-		el('div', {class: 'table-scroll'}, tbl),
-		panel.root,
+		{class: 'summary-block'},
+		el('h3', {}, 'Turn-by-turn ledger'),
+		el(
+			'div',
+			{class: 'info-layout'},
+			el('div', {class: 'table-scroll'}, tbl),
+			panel.root,
+		),
 	)
-	container.append(turnsLayout)
+	container.append(turnsSection)
 	wireInfoPanel([tbl], panel)
 
-	// Memory facts, if the pipeline attached them (hierarchy.meta.memory is an extension beyond SCHEMA.md; rendered defensively).
+	// Memory facts, if the pipeline attached them
 	const mem = (ds.hierarchy.meta as {memory?: unknown} | undefined)?.memory
 	if (Array.isArray(mem) && mem.length) {
 		container.append(

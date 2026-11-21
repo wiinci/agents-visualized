@@ -7,7 +7,7 @@ import {
 	type SankeyLink,
 } from 'd3-sankey'
 import type {FlowLink, FlowNode, LoopsDataset} from '../types'
-import {fmtCompact, fmtInt, stageColor, stageLabel} from '../format'
+import {fmtCompact, fmtInt, fmtPct, stageColor, stageLabel} from '../format'
 import {createResizeScope, el, makeRoving, prefersReducedMotion} from '../util'
 import {createInfoPanel, type PanelContent} from '../panel'
 import {
@@ -19,34 +19,24 @@ import {
 } from './sankey-model'
 
 /**
- * Loop Sankey — "dots and hairlines" variant.
+ * Plate II — Loop Sankey ("dots and hairlines" editorial plate).
  *
- * d3-sankey (as in @d3/sankey-component) still computes the columns and the
- * vertical order, but nodes are drawn as small circles at the node centre and
- * links converge on that point as thin strokes. Circle AREA encodes a size
- * metric via d3.scaleSqrt (the same principle d3.pack uses: r ∝ √value, see
- * @d3/bubble-chart). Hover/focus on a node or link highlights the connected
- * paths in the ink colour and dims the rest (@john-guerra/sankey-diagram-component).
+ * d3-sankey computes column ranks and vertical order; nodes render as
+ * area-scaled circles (d3.scaleSqrt) and transitions as hairlines converging
+ * on node edges. Hovering/focusing either a node OR a link highlights its
+ * connected path and updates the sticky marginalia; clicking or pressing Enter
+ * pins the selection until released.
  */
 
 type SNode = SankeyNode<FlowNode, FlowLink>
 type SLink = SankeyLink<FlowNode, FlowLink>
 type Metric = 'context' | 'prompt'
 
-/** Area encoding constants — sqrt scale on the metric, never a linear radius. */
-const R_MAX = 14 // radius of the largest circle, px
-const R_MIN = 2 // hollow ring radius for zero / near-zero values, px
-const LINK_W = [1, 4] as const // compressed stroke-width range, px (scaleSqrt on transition count)
+const R_MAX = 14
+const R_MIN = 2.5
+const LINK_W = [1, 4] as const
+const LINK_SAMPLE_PX = 10
 
-/**
- * Proximity interaction constants. Voronoi cells tile the whole canvas, so
- * inside the overlay rect the nearest mark is always resolvable and always
- * highlighted — the rect's bounds are the only proximity gate, with no dead
- * zones; outside the rect (or on pointerleave) nothing highlights.
- */
-const LINK_SAMPLE_PX = 10 // spacing between index samples along a link's rendered path
-
-/** One hoverable point in the Delaunay index; `el` is the mark the highlight applies to. */
 interface ProximityTarget {
 	kind: 'node' | 'link'
 	key: string
@@ -55,22 +45,17 @@ interface ProximityTarget {
 	y: number
 }
 
-/** Short label used beside a dot; the column header carries the stage family, so tools show just their name. */
 const shortLabel = (stage: string): string =>
 	stage.startsWith('tool:') ? stage.slice(5) : stageLabel(stage)
-const CHAR_W = 7.2 // approx. advance width of 12px monospace, for margin estimation
-
-/** Per-stage size aggregates are derived in sankey-model for unit testing. */
+const CHAR_W = 7.0
 
 const METRIC_LABEL: Record<Metric, string> = {
 	context: 'context size',
 	prompt: 'prompt size',
 }
 const METRIC_HELP: Record<Metric, string> = {
-	context:
-		'cumulative context (chars) at the moment each step of that stage ran',
-	prompt:
-		'prompt chars: user-message length, tool-call argument length, or dispatch prompt length',
+	context: 'mean cumulative context (chars) when steps of this stage ran',
+	prompt: 'mean prompt length (user message, tool args, or dispatch brief)',
 }
 
 export function renderSankey(
@@ -86,38 +71,50 @@ export function renderSankey(
 
 	const {forward, back} = splitCycles(nodes, links)
 	const nodeById = new Map(nodes.map(n => [n.id, n]))
+	const backKeySet = new Set(back.map(l => `${l.source}->${l.target}`))
+	const linkByKey = new Map<string, FlowLink>()
+	for (const l of links) linkByKey.set(`${l.source}->${l.target}`, l)
 	const sizes = collectStageSizes(ds.hierarchy, nodes)
-	let metric: Metric = 'context'
 
-	// ── Toolbar: metric toggle + area legend ────────────────────────────────
-	const metricSelect = el('select', {id: 'sankey-metric', class: 'select'})
-	metricSelect.append(
-		el('option', {value: 'context'}, 'context size (mean per step)'),
-		el('option', {value: 'prompt'}, 'prompt size (mean per step)'),
+	const maxBack = d3.max(back, l => l.value) ?? 0
+	const backThreshold = Math.max(8, Math.round(maxBack * 0.18))
+	const minorBackCount = back.filter(l => l.value < backThreshold).length
+
+	let metric: Metric = 'context'
+	let showAllBack = false
+
+	// ── Editorial Toolbar: segmented metric toggle + concentric legend + loop-backs + zoom ──
+	const btnContext = el(
+		'button',
+		{type: 'button', class: 'seg-btn', 'aria-pressed': 'true'},
+		'Context size',
 	)
+	const btnPrompt = el(
+		'button',
+		{type: 'button', class: 'seg-btn', 'aria-pressed': 'false'},
+		'Prompt size',
+	)
+	const metricGroup = el(
+		'div',
+		{class: 'seg-group', role: 'group', 'aria-label': 'Dot area metric'},
+		btnContext,
+		btnPrompt,
+	)
+
+	const backToggle = el(
+		'button',
+		{
+			type: 'button',
+			class: 'btn',
+			'aria-pressed': 'false',
+			title: 'Reveal minor loop-back transitions at rest',
+		},
+		`All loop-backs (${fmtInt(back.length)})`,
+	)
+	if (minorBackCount === 0) backToggle.hidden = true
+
 	const legendHost = el('div', {class: 'sankey-legend', role: 'img'})
 
-	const note = el(
-		'p',
-		{class: 'view-note'},
-		'Observed transitions between step stages, left to right. Dot ',
-		el('strong', {}, 'area'),
-		' = mean size over the steps mapped to that stage (√ scale); hollow rings mark stages with no size data. Line weight = transition count (1–4px). ',
-		el(
-			'strong',
-			{},
-			`${fmtInt(back.length)} loop-back edge${back.length === 1 ? '' : 's'}`,
-		),
-		' (cycles such as observe → reason) are dashed hairlines bowing beneath the flow, ending in a small dot at their target, because a Sankey layout is acyclic; self-loops are small teardrops above a dot. Hover or focus a dot or line to highlight its connected paths. Drag to pan, Ctrl/⌘ + scroll or the buttons to zoom.',
-	)
-
-	// ── Chart frame with zoom controls (top-right) ──────────────────────────
-	const host = el('div', {
-		class: 'chart-host sankey-host',
-		role: 'group',
-		'aria-label':
-			'Loop Sankey diagram; use arrow keys to move between nodes and links',
-	})
 	const zoomIn = el(
 		'button',
 		{
@@ -158,6 +155,7 @@ export function renderSankey(
 		},
 		'↺',
 	)
+	zoomReset.hidden = true
 	const zoomBar = el(
 		'div',
 		{class: 'zoom-controls', role: 'toolbar', 'aria-label': 'Zoom controls'},
@@ -166,137 +164,116 @@ export function renderSankey(
 		zoomFit,
 		zoomReset,
 	)
-	// Metric toggle + area legend on the left, zoom controls top-right — in one row above the chart
-	// so the controls never cover the diagram's own column headers or labels.
+
 	const toolbar = el(
 		'div',
 		{class: 'sankey-toolbar'},
-		el(
-			'label',
-			{class: 'sankey-metric', for: 'sankey-metric'},
-			'Dot area = ',
-			metricSelect,
-		),
+		el('span', {class: 'sankey-metric'}, 'Dot area', metricGroup),
 		legendHost,
+		backToggle,
 		zoomBar,
 	)
+
+	const host = el('div', {
+		class: 'chart-host sankey-host',
+		role: 'group',
+		'aria-label':
+			'Loop Sankey diagram; use arrow keys to move between nodes and links',
+	})
 	const frame = el('div', {class: 'sankey-frame'}, host)
-	// ── Node info content (the info panel's single source of truth) ────────
+
+	// ── Marginalia content (nodes AND links) ───────────────────────────────
 	const origin = originNode(nodes, links)
+	const outTotalOf = (id: string): number =>
+		links.filter(l => l.source === id).reduce((s, l) => s + l.value, 0)
+	const inTotalOf = (id: string): number =>
+		links.filter(l => l.target === id).reduce((s, l) => s + l.value, 0)
+
 	const nodeContent = (n: FlowNode): PanelContent => {
-		const inn = links
-			.filter(l => l.target === n.id)
-			.reduce((s, l) => s + l.value, 0)
-		const out = links
-			.filter(l => l.source === n.id)
-			.reduce((s, l) => s + l.value, 0)
+		const inn = inTotalOf(n.id)
+		const out = outTotalOf(n.id)
 		const s = sizes.get(n.id)
-		const ctx = metricOf(s, 'context'),
-			pr = metricOf(s, 'prompt')
+		const ctx = metricOf(s, 'context')
+		const pr = metricOf(s, 'prompt')
 		const active = metricOf(s, metric)
+		const secondary: [string, string] =
+			metric === 'context'
+				? [
+						'mean prompt size',
+						pr.n
+							? `${fmtInt(Math.round(pr.mean))} chars (n=${fmtInt(pr.n)})`
+							: '—',
+					]
+				: [
+						'mean context size',
+						ctx.n
+							? `${fmtInt(Math.round(ctx.mean))} chars (n=${fmtInt(ctx.n)})`
+							: '—',
+					]
+
 		return {
+			kicker: `Observed stage · ${n.kind}`,
 			title: stageLabel(n.stage),
-			badges: [
-				{text: 'observed'},
-				{text: n.kind},
-				{text: `dot area = mean ${METRIC_LABEL[metric]}`},
+			stats: [
+				['Steps', fmtInt(n.count)],
+				[
+					`Mean ${metric}`,
+					active.n ? `${fmtCompact(active.mean)} chars` : 'No data',
+				],
 			],
 			rows: [
-				['stage', n.stage],
-				['steps', fmtInt(n.count)],
 				[
-					`mean ${METRIC_LABEL[metric]} (encoded)`,
+					`mean ${METRIC_LABEL[metric]}`,
 					active.n
-						? `${fmtInt(Math.round(active.mean))} chars over ${fmtInt(active.n)} step${active.n === 1 ? '' : 's'}`
-						: 'no data → hollow ring',
+						? `${fmtInt(Math.round(active.mean))} chars (n=${fmtInt(active.n)})`
+						: 'hollow ring (no size data)',
 				],
-				[
-					'mean context size',
-					ctx.n
-						? `${fmtInt(Math.round(ctx.mean))} chars (n=${fmtInt(ctx.n)})`
-						: '—',
-				],
-				[
-					'mean prompt size',
-					pr.n
-						? `${fmtInt(Math.round(pr.mean))} chars (n=${fmtInt(pr.n)})`
-						: '—',
-				],
+				secondary,
 				[
 					'mean tokens (est.)',
 					s && s.tokensN
-						? `${fmtInt(Math.round(s.tokensSum / s.tokensN))} est. tokens over ${fmtInt(s.tokensN)} step${s.tokensN === 1 ? '' : 's'}`
+						? `≈${fmtInt(Math.round(s.tokensSum / s.tokensN))} / step`
 						: '—',
 				],
-				['aggregation', `mean per step; ${METRIC_HELP[metric]}`],
-				['incoming transitions', fmtInt(inn)],
-				['outgoing transitions', fmtInt(out)],
-				['id', n.id],
+				['incoming', `${fmtInt(inn)} transitions`],
+				['outgoing', `${fmtInt(out)} transitions`],
+				['encoding', METRIC_HELP[metric]],
 			],
 		}
 	}
 
-	// ── Info panel: a permanent rectangular column beside the chart ─────────
-	// Shared component. Always visible (never floating): the origin node's
-	// details by default, the hovered/focused node's details while interaction
-	// lasts. aria-live=polite announces content swaps; the heading gives the
-	// aside its accessible name. Only node keys reach contentFor — link hover
-	// highlights without touching the panel.
-	const panel = createInfoPanel({
-		headingId: 'sankey-panel-title',
-		heading: 'Node details',
-		contentFor: key => {
-			const n = nodeById.get(key)
-			return n ? nodeContent(n) : null
-		},
-		defaultContent: () => (origin ? nodeContent(origin) : null),
-	})
-	const layout = el('div', {class: 'sankey-layout'}, frame, panel.root)
-	container.append(note, toolbar, layout)
-
-	// ── Legend: three adjacent circles, bottom-aligned, value labelled beneath ──
-	const drawLegend = (max: number): void => {
-		legendHost.replaceChildren()
-		const r = d3
-			.scaleSqrt()
-			.domain([0, Math.max(1, max)])
-			.range([0, R_MAX])
-		const values = max > 0 ? [max, max / 4, max / 16] : []
-		const slot = 78,
-			w = values.length ? slot * values.length : 120,
-			h = R_MAX * 2 + 18
-		const svg = d3
-			.create('svg')
-			.attr('width', w)
-			.attr('height', h)
-			.attr('viewBox', `0 0 ${w} ${h}`)
-			.attr('aria-hidden', 'true')
-		const base = R_MAX * 2 + 1
-		const g = svg.append('g').attr('class', 'legend-circles')
-		values.forEach((v, i) => {
-			const cx = slot * i + slot / 2
-			g.append('circle')
-				.attr('cx', cx)
-				.attr('cy', base - r(v))
-				.attr('r', r(v))
-			g.append('text')
-				.attr('x', cx)
-				.attr('y', h - 3)
-				.attr('text-anchor', 'middle')
-				.text(`${fmtCompact(v)} chars`)
-		})
-		if (!values.length)
-			g.append('text').attr('x', 0).attr('y', base).text('no size data')
-		legendHost.setAttribute(
-			'aria-label',
-			values.length
-				? `Area legend: circles of ${values.map(v => fmtInt(Math.round(v))).join(', ')} characters, mean ${METRIC_LABEL[metric]} per step`
-				: 'Area legend: no size data',
-		)
-		legendHost.append(svg.node()!)
+	const linkContent = (linkKey: string): PanelContent | null => {
+		const l = linkByKey.get(linkKey)
+		if (!l) return null
+		const src = nodeById.get(l.source)
+		const tgt = nodeById.get(l.target)
+		const isBack = backKeySet.has(linkKey)
+		const isSelf = l.source === l.target
+		const srcOut = outTotalOf(l.source)
+		return {
+			kicker: isSelf
+				? 'Observed self-loop'
+				: isBack
+					? 'Observed loop-back cycle'
+					: 'Observed forward transition',
+			title: `${stageLabel(src?.stage ?? l.source)} → ${stageLabel(tgt?.stage ?? l.target)}`,
+			stats: [
+				['Transitions', fmtInt(l.value)],
+				['Share of source', fmtPct(l.value, srcOut)],
+			],
+			rows: [
+				['from stage', stageLabel(src?.stage ?? l.source)],
+				['to stage', stageLabel(tgt?.stage ?? l.target)],
+				[
+					'direction',
+					isSelf ? 'self-loop' : isBack ? 'loop-back (cyclic)' : 'forward',
+				],
+				['edge kind', l.kind],
+			],
+		}
 	}
 
-	// ── Highlight state (John Guerra's hover pattern, extended to focus) ────
+	// Highlight state
 	let svgSel: d3.Selection<SVGSVGElement, undefined, null, undefined> | null =
 		null
 	const clearHighlight = (): void => {
@@ -304,10 +281,8 @@ export function renderSankey(
 		svgSel.classed('is-highlighting', false)
 		svgSel.selectAll('.is-hi').classed('is-hi', false)
 	}
-	const highlightFor = (target: Element): void => {
+	const highlightByKey = (kind: 'node' | 'link', key: string): void => {
 		if (!svgSel) return
-		const key = target.getAttribute('data-key') ?? ''
-		const kind = target.getAttribute('data-hit')
 		clearHighlight()
 		svgSel.classed('is-highlighting', true)
 		if (kind === 'node') {
@@ -348,33 +323,119 @@ export function renderSankey(
 				.classed('is-hi', true)
 		}
 	}
+	const highlightFor = (target: Element): void => {
+		const key = target.getAttribute('data-key') ?? ''
+		const kind = target.getAttribute('data-hit') === 'link' ? 'link' : 'node'
+		highlightByKey(kind, key)
+	}
+
+	const panel = createInfoPanel({
+		headingId: 'sankey-panel-title',
+		heading: 'Stage & transition details',
+		contentFor: key => {
+			if (key.startsWith('link:')) return linkContent(key.slice(5))
+			const n = nodeById.get(key)
+			return n ? nodeContent(n) : null
+		},
+		defaultContent: () => (origin ? nodeContent(origin) : null),
+		onPinChange: pinned => {
+			if (pinned === null) {
+				clearHighlight()
+			} else if (pinned.startsWith('link:')) {
+				highlightByKey('link', pinned.slice(5))
+			} else {
+				highlightByKey('node', pinned)
+			}
+		},
+	})
+
+	const layout = el('div', {class: 'sankey-layout'}, frame, panel.root)
+	const foot = el(
+		'footer',
+		{class: 'plate-foot'},
+		`Reading key: Hollow rings mark stages with no size data. `,
+		`${fmtInt(back.length)} cyclic loop-back edges bow beneath the flow as dashed arcs (minor cycles under ${fmtInt(backThreshold)}× recede until hovered or toggled). `,
+		`Drag to pan; Ctrl/⌘ + scroll or buttons to zoom; click any dot or line to pin its marginalia.`,
+	)
+	container.append(toolbar, layout, foot)
+
+	// ── Concentric bottom-aligned area legend (compact editorial bubble key) ──
+	const drawLegend = (max: number): void => {
+		legendHost.replaceChildren()
+		const r = d3
+			.scaleSqrt()
+			.domain([0, Math.max(1, max)])
+			.range([0, R_MAX])
+		const values = max > 0 ? [max, max / 4, max / 16] : []
+		const cx = R_MAX + 2
+		const base = R_MAX * 2 + 4
+		const labelX = R_MAX * 2 + 16
+		const w = values.length ? labelX + 78 : 110
+		const h = base + 4
+		const svg = d3
+			.create('svg')
+			.attr('width', w)
+			.attr('height', h)
+			.attr('viewBox', `0 0 ${w} ${h}`)
+			.attr('aria-hidden', 'true')
+		const g = svg.append('g').attr('class', 'legend-circles')
+		const labelYs = [6, 17, 28]
+		values.forEach((v, i) => {
+			const rad = r(v)
+			const topY = base - rad * 2
+			const ly = labelYs[i] ?? topY
+			g.append('circle')
+				.attr('cx', cx)
+				.attr('cy', base - rad)
+				.attr('r', rad)
+			g.append('line')
+				.attr('x1', cx)
+				.attr('x2', labelX - 4)
+				.attr('y1', topY)
+				.attr('y2', ly)
+			g.append('text')
+				.attr('x', labelX)
+				.attr('y', ly + 3)
+				.text(`${fmtCompact(v)}${i === 0 ? ' chars' : ''}`)
+		})
+		if (!values.length)
+			g.append('text')
+				.attr('x', 0)
+				.attr('y', base - 4)
+				.text('no size data')
+		legendHost.setAttribute(
+			'aria-label',
+			values.length
+				? `Area legend: circles of ${values.map(v => fmtInt(Math.round(v))).join(', ')} characters, mean ${METRIC_LABEL[metric]} per step`
+				: 'Area legend: no size data',
+		)
+		legendHost.append(svg.node()!)
+	}
 
 	// ── Draw ────────────────────────────────────────────────────────────────
 	let lastWidth = 0
 	let zoom: d3.ZoomBehavior<SVGSVGElement, undefined> | null = null
 	let contentBox = {x: 0, y: 0, w: 0, h: 0}
 	let viewport = {w: 0, h: 0}
+	let lastHoverTarget: ProximityTarget | null = null
 
 	const draw = (width: number): void => {
 		lastWidth = width
 		host.replaceChildren()
-		const height = Math.max(420, Math.min(760, nodes.length * 40))
+		const height = Math.max(460, Math.min(800, nodes.length * 44))
 		const labelOf = (n: FlowNode): string =>
 			`${shortLabel(n.stage)} · ${fmtInt(n.count)}`
 		const labelW = (pred: (n: FlowNode) => boolean): number =>
 			(d3.max(nodes.filter(pred), n => labelOf(n).length) ?? 0) * CHAR_W
 		const maxRank = d3.max(nodes, n => rank(n.stage)) ?? 0
 		const margin = {
-			top: 44 + R_MAX, // column headers + room for self-loop teardrops
-			right: 16 + R_MAX + 10 + labelW(n => rank(n.stage) === maxRank),
-			bottom: 24 + R_MAX,
-			left: 16 + R_MAX + 10 + labelW(n => rank(n.stage) === 0),
+			top: 42 + R_MAX,
+			right: 18 + R_MAX + 10 + labelW(n => rank(n.stage) === maxRank),
+			bottom: 44 + R_MAX,
+			left: 18 + R_MAX + 10 + labelW(n => rank(n.stage) === 0),
 		}
 		viewport = {w: width, h: height}
 
-		// Columns are pinned to the stage rank (nodeAlign returns the layer index), so a tool node
-		// that only has cyclic in-links still sits in the tool column instead of drifting left.
-		// Ranks present in the data are compressed to contiguous layer indices.
 		const ranksPresent = [...new Set(nodes.map(n => rank(n.stage)))].sort(
 			d3.ascending,
 		)
@@ -383,7 +444,7 @@ export function renderSankey(
 			const gen = sankey<FlowNode, FlowLink>()
 				.nodeId(d => d.id)
 				.nodeWidth(1)
-				.nodePadding(22)
+				.nodePadding(24)
 				.nodeSort((a, b) => d3.descending(a.value ?? 0, b.value ?? 0))
 				.extent([
 					[margin.left, margin.top],
@@ -403,8 +464,6 @@ export function renderSankey(
 		try {
 			graph = makeGen(true)(input())
 		} catch {
-			// Degenerate dataset (a rank present with no forward path to it leaves an empty column):
-			// fall back to d3-sankey's own justified layout rather than failing the view.
 			graph = makeGen(false)(input())
 		}
 
@@ -413,20 +472,18 @@ export function renderSankey(
 		const pos = new Map(graph.nodes.map(n => [n.id, n]))
 		const minX = d3.min(graph.nodes, cx) ?? 0
 
-		// Column headers: the stage families present in each column, in muted monospace.
 		const columns = d3
 			.groups(graph.nodes, n => Math.round(cx(n)))
 			.sort((a, b) => a[0] - b[0])
 		const family = (s: string): string => (s.startsWith('tool:') ? 'tool' : s)
 
-		// Sizes for this metric
 		const metricValue = (id: string): number =>
 			metricOf(sizes.get(id), metric).mean
 		const maxMetric = d3.max(nodes, n => metricValue(n.id)) ?? 0
 		const r = d3
 			.scaleSqrt()
 			.domain([0, Math.max(1, maxMetric)])
-			.range([0, R_MAX]) // AREA ∝ value
+			.range([0, R_MAX])
 		const radiusOf = (id: string): {r: number; hollow: boolean} => {
 			const rr = r(metricValue(id))
 			return rr < R_MIN ? {r: R_MIN, hollow: true} : {r: rr, hollow: false}
@@ -444,7 +501,7 @@ export function renderSankey(
 			.attr('width', width)
 			.attr('height', height)
 			.attr('role', 'img')
-			.attr('class', 'sankey-svg')
+			.attr('class', `sankey-svg${showAllBack ? ' show-all-back' : ''}`)
 			.attr(
 				'aria-label',
 				`Sankey of observed step-stage transitions; dot area shows mean ${METRIC_LABEL[metric]} per step`,
@@ -463,14 +520,12 @@ export function renderSankey(
 			.attr('class', 'sankey-header')
 			.attr('x', ([, ns]) => cx(ns[0]!))
 			.attr('y', 18)
-			// Headers sit where that column's labels sit: left of the first column, right of the last.
 			.attr('text-anchor', (_, i) =>
 				i === 0 ? 'end' : i === columns.length - 1 ? 'start' : 'middle',
 			)
 			.attr('dx', (_, i) => (i === 0 ? 6 : i === columns.length - 1 ? -6 : 0))
 			.text(([, ns]) => [...new Set(ns.map(n => family(n.stage)))].join(' / '))
 
-		// Forward links: thin strokes converging on node centres (not ribbons).
 		const linkPath = d3.linkHorizontal<
 			{source: [number, number]; target: [number, number]},
 			[number, number]
@@ -479,12 +534,11 @@ export function renderSankey(
 			s: SNode,
 			t: SNode,
 		): {source: [number, number]; target: [number, number]} => {
-			const rs = radiusOf(s.id).r,
-				rt = radiusOf(t.id).r
+			const rs = radiusOf(s.id).r
+			const rt = radiusOf(t.id).r
 			return {source: [cx(s) + rs, cy(s)], target: [cx(t) - rt, cy(t)]}
 		}
-		// Visible hairlines are decorative (pointer-events: none in CSS); interaction lives on an
-		// invisible wider-stroke layer (see below) so hovers on curved strokes never miss.
+
 		layer
 			.append('g')
 			.attr('fill', 'none')
@@ -502,50 +556,46 @@ export function renderSankey(
 				'data-key',
 				d => `${(d.source as SNode).id}->${(d.target as SNode).id}`,
 			)
+
 		const hitsG = layer
 			.append('g')
 			.attr('fill', 'none')
 			.attr('class', 'sankey-hits')
 
-		// Loop-back edges: dashed hairlines that bow downward from source to target (right→left),
-		// a 3px dot marks the target. Self-loops are small teardrops above the node.
 		const backG = layer
 			.append('g')
 			.attr('fill', 'none')
 			.attr('class', 'sankey-back')
 		const backPath = (d: FlowLink): string => {
-			const s = pos.get(d.source),
-				t = pos.get(d.target)
+			const s = pos.get(d.source)
+			const t = pos.get(d.target)
 			if (!s || !t) return ''
-			const rs = radiusOf(s.id).r,
-				rt = radiusOf(t.id).r
-			const x0 = cx(s),
-				x1 = cx(t)
+			const rs = radiusOf(s.id).r
+			const rt = radiusOf(t.id).r
+			const x0 = cx(s)
+			const x1 = cx(t)
 			if (d.source === d.target) {
 				const y = cy(s) - rs
-				return `M${x0 - 3},${y} C${x0 - 22},${y - 26} ${x0 + 22},${y - 26} ${x0 + 3},${y}`
+				return `M${x0 - 2.5},${y} C${x0 - 15},${y - 18} ${x0 + 15},${y - 18} ${x0 + 2.5},${y}`
 			}
-			const y0 = cy(s) + rs,
-				y1 = cy(t) + rt
-			const bow = 28 + Math.abs(x1 - x0) * 0.16 // deeper bow for longer spans so arcs separate
+			const y0 = cy(s) + rs
+			const y1 = cy(t) + rt
+			const bow = 26 + Math.abs(x1 - x0) * 0.14
 			return `M${x0},${y0} C${x0},${Math.max(y0, y1) + bow} ${x1},${Math.max(y0, y1) + bow} ${x1},${y1}`
 		}
 		backG
 			.selectAll<SVGPathElement, FlowLink>('path')
 			.data(back)
 			.join('path')
-			.attr('class', 'sankey-link is-back')
-			.attr('stroke-width', 1)
+			.attr(
+				'class',
+				d => `sankey-link is-back${d.value < backThreshold ? ' is-minor' : ''}`,
+			)
+			.attr('stroke-width', d => Math.max(1, linkW(d.value) * 0.7))
 			.attr('stroke-dasharray', '4 3')
 			.attr('d', backPath)
 			.attr('data-key', d => `${d.source}->${d.target}`)
 
-		// Invisible ~8px hit strokes over every edge (same geometry, transparent stroke)
-		// carrying the interaction attributes. Pointer duty retired (pointer-events: none
-		// in CSS — the proximity overlay resolves the cursor); they remain the keyboard
-		// roving-focus targets and the geometry source for link sampling.
-		// One combined data array + one join: a second selectAll('path') join in the same group
-		// would re-bind the first join's paths and shrink the layer to the last dataset.
 		const hitSpecs = [
 			...graph.links.map(d => ({
 				d: linkPath(shorten(d.source as SNode, d.target as SNode)) ?? '',
@@ -570,16 +620,24 @@ export function renderSankey(
 			.attr('tabindex', -1)
 			.attr('role', 'button')
 			.attr('aria-label', d => d.label)
+
 		backG
 			.selectAll<SVGCircleElement, FlowLink>('circle')
 			.data(back.filter(d => d.source !== d.target))
 			.join('circle')
-			.attr('class', 'sankey-back-dot')
-			.attr('r', 1.5)
+			.attr(
+				'class',
+				d => `sankey-back-dot${d.value < backThreshold ? ' is-minor' : ''}`,
+			)
+			.attr('r', 1.75)
 			.attr('cx', d => cx(pos.get(d.target)!))
-			.attr('cy', d => cy(pos.get(d.target)!) + radiusOf(d.target).r + 1.5)
+			.attr('cy', d => cy(pos.get(d.target)!) + radiusOf(d.target).r + 2)
 
-		// Nodes: circles (area = metric) + monospace labels.
+		// Smart label anchoring: place left of dot when the node fans out heavily rightward (user, reason)
+		// so labels stay clear of outgoing link bundles.
+		const labelLeft = (d: SNode): boolean =>
+			cx(d) === minX || d.stage === 'reason'
+
 		const node = layer
 			.append('g')
 			.attr('class', 'sankey-nodes')
@@ -605,29 +663,21 @@ export function renderSankey(
 			.attr('r', d => radiusOf(d.id).r)
 			.attr('fill', d => (radiusOf(d.id).hollow ? 'none' : stageColor(d.stage)))
 			.attr('stroke', d => stageColor(d.stage))
-		// Larger invisible hit area so hairline-sized dots are still easy to hover.
 		node.append('circle').attr('class', 'sankey-hit').attr('r', 9)
 		node
 			.append('text')
 			.attr('class', 'sankey-label')
 			.attr('x', d =>
-				cx(d) === minX ? -(radiusOf(d.id).r + 8) : radiusOf(d.id).r + 8,
+				labelLeft(d) ? -(radiusOf(d.id).r + 8) : radiusOf(d.id).r + 8,
 			)
-			.attr('text-anchor', d => (cx(d) === minX ? 'end' : 'start'))
+			.attr('text-anchor', d => (labelLeft(d) ? 'end' : 'start'))
 			.attr('dy', '0.35em')
 			.text(d => labelOf(d))
 
-		// Content bounding box (for "fit") — labels included, computed after mount.
 		host.append(svg.node()!)
 		const bb = (layer.node() as SVGGElement).getBBox()
 		contentBox = {x: bb.x, y: bb.y, w: bb.width, h: bb.height}
 
-		// ── Proximity index: one Delaunay over every hoverable point ────────────
-		// Node targets sit at circle centres; link targets sample the rendered hit
-		// paths every ~LINK_SAMPLE_PX (getPointAtLength), so the index follows the
-		// drawn curves rather than straight source→target chords. Samples stop
-		// short of the dot radius (paths are already shortened to the dot edges),
-		// so node centres win ties near a dot. Rebuilt on every redraw.
 		const targets: ProximityTarget[] = graph.nodes.map(d => ({
 			kind: 'node',
 			key: d.id,
@@ -658,10 +708,9 @@ export function renderSankey(
 			t => t.y,
 		)
 
-		// ── Overlay: one transparent rect, the sole pointer surface ─────────────
-		// A sibling after the zoom layer, so it never pans or scales and pan/zoom
-		// gestures bubble to the svg's zoom behavior underneath. Proximity resolves
-		// the closest mark to the cursor instead of requiring pointer precision.
+		const panelKeyFor = (t: ProximityTarget): string =>
+			t.kind === 'link' ? `link:${t.key}` : t.key
+
 		const overlay = svg
 			.append('rect')
 			.attr('class', 'sankey-overlay')
@@ -669,35 +718,46 @@ export function renderSankey(
 			.attr('height', height)
 			.attr('fill', 'transparent')
 			.attr('aria-hidden', 'true')
+
 		const clearHover = (): void => {
+			lastHoverTarget = null
+			const pinned = panel.pinnedKey()
+			if (pinned !== null) {
+				if (pinned.startsWith('link:')) highlightByKey('link', pinned.slice(5))
+				else highlightByKey('node', pinned)
+				return
+			}
 			const focused = document.activeElement?.closest('[data-hit]')
 			if (focused && host.contains(focused)) {
 				highlightFor(focused)
-				panel.showKey(nodeIdOf(focused))
+				panel.showKey(markKeyOf(focused))
 			} else {
 				clearHighlight()
 				panel.showKey(null)
 			}
 		}
+
 		overlay.on('pointermove', (ev: PointerEvent) => {
-			// Keyboard focus beats proximity: while a mark holds focus, pointer moves
-			// keep highlighting the focused mark.
+			if (panel.pinnedKey() !== null) return
 			const focused = document.activeElement?.closest('[data-hit]')
 			if (focused && host.contains(focused)) {
 				highlightFor(focused)
-				panel.showKey(nodeIdOf(focused))
+				panel.showKey(markKeyOf(focused))
 				return
 			}
-			const [x, y] = d3.pointer(ev, layer.node()) // zoom-layer coords — survives pan/zoom
+			const [x, y] = d3.pointer(ev, layer.node())
 			const t = targets[delaunay.find(x, y)]!
-			// Inside the rect the nearest mark always resolves and highlights — the
-			// rect's bounds are the only gate (Voronoi cells tile the whole canvas).
+			lastHoverTarget = t
 			highlightFor(t.el)
-			if (t.kind === 'node') panel.showKey(t.key) // links highlight only; panel untouched
+			panel.showKey(panelKeyFor(t))
 		})
 		overlay.on('pointerleave', () => clearHover())
+		overlay.on('click', (ev: MouseEvent) => {
+			const [x, y] = d3.pointer(ev, layer.node())
+			const t = lastHoverTarget ?? targets[delaunay.find(x, y)]
+			if (t) panel.pinKey(panelKeyFor(t))
+		})
 
-		// Pan/zoom: drag to pan, ctrl/⌘+wheel or pinch to zoom (plain wheel keeps scrolling the page).
 		zoom = d3
 			.zoom<SVGSVGElement, undefined>()
 			.scaleExtent([0.5, 8])
@@ -708,54 +768,66 @@ export function renderSankey(
 			})
 			.on('zoom', (ev: d3.D3ZoomEvent<SVGSVGElement, undefined>) => {
 				layer.attr('transform', ev.transform.toString())
+				const isIdentity =
+					Math.abs(ev.transform.k - 1) < 0.01 &&
+					Math.abs(ev.transform.x) < 1 &&
+					Math.abs(ev.transform.y) < 1
+				zoomReset.hidden = isIdentity
 			})
 		svg.call(zoom)
 		svg.on('dblclick.zoom', null)
 
+		// Restore active pinned highlight across redraws
+		const pinned = panel.pinnedKey()
+		if (pinned !== null) {
+			if (pinned.startsWith('link:')) highlightByKey('link', pinned.slice(5))
+			else highlightByKey('node', pinned)
+		}
+
 		makeRoving(host, '[data-hit]')
-		// Metric changes relabel the panel rows; re-render for the current state (no animation).
 		panel.refresh()
 	}
 
-	// Highlight on keyboard focus (delegated once on the persistent host; redraws replace
-	// only the SVG). Pointer interaction lives on the draw()'s proximity overlay; pointer
-	// moves no longer require mark-precise hit-testing. The info panel follows the same
-	// marks: nodes swap its content, links leave it alone.
-	const nodeIdOf = (mark: Element | null): string | null =>
-		mark?.getAttribute('data-hit') === 'node'
-			? mark.getAttribute('data-key')
-			: null
-	host.addEventListener('pointerover', e => {
-		const t = (e.target as Element).closest('[data-hit]')
-		if (t) highlightFor(t)
-		panel.showKey(nodeIdOf(t))
-	})
-	host.addEventListener('pointerout', e => {
-		// Leaving a mark clears the hover highlight unless a mark holds keyboard focus (focus wins).
-		const t = (e.target as Element).closest('[data-hit]')
-		const focused = document.activeElement?.closest('[data-hit]')
-		if (t && (!focused || !host.contains(focused))) clearHighlight()
-		else if (focused) highlightFor(focused)
-		// Panel: when the pointer moves onto another node, pointerover swaps it in — skipping
-		// here avoids a default-view flash between adjacent marks; otherwise the keyboard-focused
-		// mark wins, and with neither, the panel reverts to the origin node.
-		const to = (e as PointerEvent).relatedTarget as Element | null
-		if (nodeIdOf(to?.closest('[data-hit]') ?? null) === null)
-			panel.showKey(nodeIdOf(focused ?? null))
-	})
+	const markKeyOf = (mark: Element | null): string | null => {
+		if (!mark) return null
+		const k = mark.getAttribute('data-key')
+		if (!k) return null
+		return mark.getAttribute('data-hit') === 'link' ? `link:${k}` : k
+	}
+
 	host.addEventListener('focusin', e => {
+		if (panel.pinnedKey() !== null) return
 		const t = (e.target as Element).closest('[data-hit]')
 		if (t) highlightFor(t)
-		panel.showKey(nodeIdOf(t))
+		panel.showKey(markKeyOf(t))
 	})
 	host.addEventListener('focusout', e => {
+		if (panel.pinnedKey() !== null) return
 		const nx = e.relatedTarget as Element | null
 		if (!nx || !nx.closest('[data-hit]')) clearHighlight()
-		// Focus landing on a non-node mark (or nowhere) leaves no node to show → default view;
-		// node → node transitions are handled by focusin on the next mark.
-		if (nodeIdOf(nx?.closest('[data-hit]') ?? null) === null)
+		if (markKeyOf(nx?.closest('[data-hit]') ?? null) === null)
 			panel.showKey(null)
 	})
+	host.addEventListener('keydown', e => {
+		const ke = e as KeyboardEvent
+		if (ke.key === 'Escape' && panel.pinnedKey() !== null) {
+			ke.preventDefault()
+			panel.pinKey(null)
+			return
+		}
+		if (ke.key === 'Enter' || ke.key === ' ') {
+			const t = (ke.target as Element | null)?.closest('[data-hit]')
+			const k = markKeyOf(t ?? null)
+			if (k) {
+				ke.preventDefault()
+				panel.pinKey(k)
+			}
+		}
+	})
+	const onDocEsc = (e: KeyboardEvent) => {
+		if (e.key === 'Escape' && panel.pinnedKey() !== null) panel.pinKey(null)
+	}
+	document.addEventListener('keydown', onDocEsc)
 
 	const zoomTo = (t: d3.ZoomTransform): void => {
 		if (!zoom || !svgSel) return
@@ -791,12 +863,27 @@ export function renderSankey(
 		const ty = (viewport.h - k * contentBox.h) / 2 - k * contentBox.y
 		zoomTo(d3.zoomIdentity.translate(tx, ty).scale(k))
 	}
-	metricSelect.onchange = () => {
-		metric = metricSelect.value === 'prompt' ? 'prompt' : 'context'
+
+	const setMetric = (m: Metric) => {
+		if (metric === m) return
+		metric = m
+		btnContext.setAttribute('aria-pressed', String(m === 'context'))
+		btnPrompt.setAttribute('aria-pressed', String(m === 'prompt'))
 		if (lastWidth) draw(lastWidth)
+	}
+	btnContext.onclick = () => setMetric('context')
+	btnPrompt.onclick = () => setMetric('prompt')
+
+	backToggle.onclick = () => {
+		showAllBack = !showAllBack
+		backToggle.setAttribute('aria-pressed', String(showAllBack))
+		svgSel?.classed('show-all-back', showAllBack)
 	}
 
 	const resizeScope = createResizeScope()
 	resizeScope.observe(container, draw)
-	return () => resizeScope.dispose()
+	return () => {
+		resizeScope.dispose()
+		document.removeEventListener('keydown', onDocEsc)
+	}
 }

@@ -1,61 +1,172 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
-    <!-- dark-mode guide: inline (non-module) script so a pinned scheme applies before first paint (no FOUC).
+	<head>
+		<meta charset="utf-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1"
+		/>
+		<meta
+			name="color-scheme"
+			content="light dark"
+		/>
+		<!-- dark-mode guide: inline (non-module) script so a pinned scheme applies before first paint (no FOUC).
          The stylesheet also sets color-scheme on :root, so the inline style is what makes the pin win. -->
-    <script>
-      {
-        const s = localStorage.getItem('theme');
-        if (s === 'light' || s === 'dark') {
-          document.querySelector('meta[name="color-scheme"]').content = s;
-          document.documentElement.style.colorScheme = s;
-        }
-      }
-    </script>
-    <title>Agent loops — Obvious, visualized</title>
-    <meta name="description" content="D3 visualization of Obvious agent loops: turns, tool calls, delegation, context growth and the documented loop model." />
-    <script type="module" crossorigin src="./assets/index-Cbz46Igx.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/d3-BFev0dFw.js">
-    <link rel="stylesheet" crossorigin href="./assets/index-QmHvCdmr.css">
-  </head>
-  <body>
-    <a class="skip-link" href="#views">Skip to visualizations</a>
-    <header class="site-header">
-      <div>
-        <h1>Agent loops, visualized</h1>
-        <p class="lede">How Obvious turns a request into reasoning, tool calls, delegation and a reply — from observed thread data, with sizes (characters, estimated tokens, context) in every encoding and the Sankey view's info panel.</p>
-      </div>
-      <div class="header-tools">
-        <label class="theme-toggle">
-          <span class="visually-hidden">Colour scheme</span>
-          <!-- Two-state control (dark-mode guide): system setting, or the opposite pinned exactly. main.ts labels the second option. -->
-          <select id="theme" aria-label="Colour scheme">
-            <option value="auto">System colours</option>
-            <option value="dark" id="theme-pin">Dark</option>
-          </select>
-        </label>
-      </div>
-    </header>
+		<script>
+			{
+				const s = localStorage.getItem('theme')
+				if (s === 'light' || s === 'dark') {
+					document.querySelector('meta[name="color-scheme"]').content = s
+					document.documentElement.style.colorScheme = s
+				}
+			}
+		</script>
+		<title>Inside the Agent Loop — Obvious, visualized</title>
+		<meta
+			name="description"
+			content="An interactive visual monograph of Obvious agent loops: canonical cycles, observed stage transitions, turn hierarchy, worker delegation, context growth, and estimated token cost."
+		/>
+		<script type="module" crossorigin src="./assets/index-LZN4ojI3.js"></script>
+		<link rel="modulepreload" crossorigin href="./assets/d3-BcFbTnyZ.js">
+		<link rel="stylesheet" crossorigin href="./assets/index-ChNZv46S.css">
+	</head>
+	<body>
+		<div
+			id="read-progress"
+			class="read-progress"
+			aria-hidden="true"
+		></div>
+		<a
+			class="skip-link"
+			href="#essay"
+			>Skip to essay</a
+		>
 
-    <div id="banner" class="banner" role="status" hidden></div>
+		<header class="masthead spread">
+			<div class="masthead-bar">
+				<div
+					class="masthead-dateline"
+					id="dateline"
+				>
+					<span
+						class="dateline-dot"
+						id="dateline-dot"
+						aria-hidden="true"
+					></span>
+					<span id="dateline-text">Observed agent trace · Loading…</span>
+				</div>
+				<div class="header-tools">
+					<a
+						class="masthead-link"
+						href="#colophon"
+						>Methods &amp; data</a
+					>
+					<label class="theme-toggle">
+						<span class="visually-hidden">Colour scheme</span>
+						<!-- Two-state control (dark-mode guide): system setting, or the opposite pinned exactly. main.ts labels the second option. -->
+						<select
+							id="theme"
+							aria-label="Colour scheme"
+						>
+							<option value="auto">System colours</option>
+							<option
+								value="dark"
+								id="theme-pin"
+							>
+								Dark
+							</option>
+						</select>
+					</label>
+				</div>
+			</div>
 
-    <section id="source" class="source" aria-labelledby="source-h">
-      <h2 id="source-h">Where this data came from</h2>
-      <p id="source-text" class="source-text">Loading…</p>
-      <dl id="source-meta" class="source-meta"></dl>
-    </section>
+			<div class="masthead-grid">
+				<div>
+					<p class="masthead-kicker">Interactive Monograph · Empirical Trace</p>
+					<h1>Inside the Agent Loop</h1>
+					<p class="lede">
+						How an orchestrator turns a single request into reasoning, shell
+						commands, delegated worker threads, and nearly a million characters
+						of accumulated context.
+					</p>
+				</div>
+				<aside
+					class="masthead-aside"
+					aria-label="Reading guide"
+				>
+					<p><strong>How to read this spread</strong></p>
+					<p>
+						Hover or arrow-key across any mark to inspect its numbers in the
+						right-hand marginalia. Click or press Enter to pin an entry; press
+						Esc to release.
+					</p>
+				</aside>
+			</div>
 
-    <main id="views">
-      <div class="tabs" role="tablist" aria-label="Visualizations" id="tablist"></div>
-      <div id="panels"></div>
-      <p class="kbd-help muted small">Keyboard: Tab into a chart, arrow keys move between nodes, Enter or Space pins the details panel, Esc closes it.</p>
-    </main>
+			<div
+				id="banner"
+				class="banner"
+				role="status"
+				hidden
+			></div>
+			<div
+				id="kpis"
+				class="kpis"
+				aria-label="Key trace figures"
+			></div>
+		</header>
 
-    <footer class="site-footer muted small">
-      <span id="footer-note"></span>
-    </footer>
-  </body>
+		<div class="chapter-nav-wrap">
+			<nav
+				class="chapter-nav"
+				aria-label="Essay sections"
+			>
+				<div
+					class="spread chapter-nav-inner"
+					id="chapter-nav"
+				></div>
+			</nav>
+		</div>
+
+		<main
+			id="essay"
+			class="essay-main spread"
+		>
+			<div id="plates"></div>
+		</main>
+
+		<section
+			id="colophon"
+			class="colophon spread"
+			aria-label="Data provenance and methodology"
+			tabindex="-1"
+		>
+			<details
+				class="colophon-details"
+				id="source-details"
+			>
+				<summary>Colophon · Data provenance &amp; methodology</summary>
+				<div class="colophon-body">
+					<p
+						id="source-text"
+						class="source-text"
+					>
+						Loading…
+					</p>
+					<dl
+						id="source-meta"
+						class="source-meta"
+					></dl>
+				</div>
+			</details>
+		</section>
+
+		<footer class="site-footer spread">
+			<span id="footer-note"></span>
+			<span
+				>Keyboard: Tab into a plate, arrow keys step between marks, Enter pins
+				marginalia, Esc releases.</span
+			>
+		</footer>
+	</body>
 </html>

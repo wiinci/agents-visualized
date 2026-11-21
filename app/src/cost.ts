@@ -263,7 +263,7 @@ export function mountRatesControl(host: HTMLElement): void {
 			'aria-haspopup': 'dialog',
 			'aria-expanded': 'false',
 		},
-		'Rates',
+		`Assumed rates (${fmtRate(getRates().default)})`,
 	)
 	if (supportsPopover) {
 		btn.setAttribute('popovertarget', 'rates-pop')

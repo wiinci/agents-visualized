@@ -1,8 +1,21 @@
 import * as d3 from 'd3'
 import type {LoopNode, LoopsDataset, TurnStat} from '../types'
-import {collectThreads, isStepKind, turnKey} from '../data'
-import {agentColor, fmtCompact, fmtInt, fmtTime} from '../format'
-import {costOf, fmtCost, fmtRate, onRatesChange, rateFor} from '../cost'
+import {buildThreadNames, collectThreads, isStepKind, turnKey} from '../data'
+import {
+	agentColor,
+	agentDisplayName,
+	fmtCompact,
+	fmtInt,
+	fmtTime,
+} from '../format'
+import {
+	costOf,
+	fmtCost,
+	fmtRate,
+	mountRatesControl,
+	onRatesChange,
+	rateFor,
+} from '../cost'
 import {createResizeScope, el, makeRoving} from '../util'
 import {createInfoPanel, wireInfoPanel, type PanelContent} from '../panel'
 import {
@@ -12,40 +25,27 @@ import {
 } from './tokens-model'
 
 /**
- * Tokens & cost — consumption per turn and per agent, from the same observed
- * dataset as every other view.
+ * Plate VI — Tokens & assumed cost per turn and agent.
  *
- * 1. Heatmap (rows = turns in global start-time order, columns = agents): cell
- *    colour = tokens (est.) that agent produced in that turn, on a sequential
- *    scale drawn with `light-dark()` so it adapts to both colour schemes
- *    (@chaytha/d3-heatmap + @d3/calendar conventions; legend after
- *    @d3/color-legend, as a CSS gradient of `light-dark()` stops).
- * 2. Cumulative trend (x = global turn index): overlaid lines, or per-agent
- *    small multiples on a shared y-scale (pattern proven in context.ts) —
- *    nearest-point highlight and crosshair after @d3/multi-line-chart/2.
- *
- * Numbers are per-turn token ESTIMATES (chars ÷ 4). Cost = estimated tokens ×
- * an assumed, editable rate (cost.ts) — never measured, never provider data.
- * Per-turn per-agent tokens are derived client-side from hierarchy step nodes
- * (meta.threadId/turnIndex/agent/tokensEst); the derivation's per-agent totals
- * match stats.agents exactly.
+ * 1. Compact heatmap with a √-scaled sequential ink ramp (so modest turns stay
+ *    legible alongside a dominant worker run, explicitly noted on the legend).
+ * 2. Cumulative consumption trend — defaults to per-agent small multiples on a
+ *    shared y-scale (with an overlaid-lines toggle), paired with the editable
+ *    Rates popover right inside this plate's toolbar.
  */
 
 type Metric = 'tokens' | 'cost'
 
-// Selections survive rate-change re-renders (module-scoped: one app, one view instance).
 let metric: Metric = 'tokens'
-let mode: 'lines' | 'multiples' = 'lines'
-let focusAfter: 'metric' | 'mode' | null = null
+let mode: 'lines' | 'multiples' = 'multiples'
+let focusAfter: string | null = null
 
-/** Disposers for this render's ResizeObservers — disconnected before the next render re-creates the hosts. */
 let chartResizeScope = createResizeScope()
 let disposeRates: (() => void) | null = null
 
 const cellKey = (threadId: string, turnIndex: number, agent: string): string =>
 	`${turnKey(threadId, turnIndex)}|${agent}`
 
-/** Sum tokensEst over observed step nodes by turn × agent (containers excluded — they carry sums). */
 function deriveTurnAgentTokens(root: LoopNode): Map<string, number> {
 	const out = new Map<string, number>()
 	const walk = (n: LoopNode): void => {
@@ -66,15 +66,9 @@ function deriveTurnAgentTokens(root: LoopNode): Map<string, number> {
 	return out
 }
 
-/** threadId → display name (stats.turns carries only the id), and turnKey → its opening user-message node (for the panel's prompt excerpt). */
-function threadDirectory(ds: LoopsDataset): {
-	names: Map<string, string>
-	prompts: Map<string, LoopNode>
-} {
-	const names = new Map<string, string>()
+function threadPrompts(ds: LoopsDataset): Map<string, LoopNode> {
 	const prompts = new Map<string, LoopNode>()
 	for (const [tid, t] of collectThreads(ds.hierarchy)) {
-		if (!names.has(tid)) names.set(tid, t.thread.name)
 		;(t.thread.children ?? []).forEach((turn, i) => {
 			if (turn.kind !== 'turn') return
 			const ti = turn.meta?.turnIndex ?? i
@@ -82,10 +76,9 @@ function threadDirectory(ds: LoopsDataset): {
 			if (prompt) prompts.set(turnKey(tid, ti), prompt)
 		})
 	}
-	return {names, prompts}
+	return prompts
 }
 
-/** Column order: fixed palette order first, then any other agents in first-seen order. */
 function agentColumns(ds: LoopsDataset): string[] {
 	const seen = ds.stats.agents.map(a => a.agent)
 	const preferred = ['user', 'orchestrator']
@@ -94,18 +87,13 @@ function agentColumns(ds: LoopsDataset): string[] {
 	return cols
 }
 
-/**
- * Sequential scale whose colours are `light-dark()` pairs: light scheme runs a
- * Blues-style ramp, dark scheme a navy → bright-blue ramp with the same
- * ordering (more tokens = stronger colour), so both themes read correctly.
- */
+/** Editorial slate-ink sequential ramp in light-dark() pairs. */
 function seqInterpolator(t: number): string {
-	const light = d3.interpolateRgb('#eff5ff', '#1e3a8a')(t)
-	const dark = d3.interpolateRgb('#1b2340', '#8ab4ff')(t)
+	const light = d3.interpolateRgb('#ebe6dc', '#1d3b5c')(t)
+	const dark = d3.interpolateRgb('#24221e', '#8ab4e8')(t)
 	return `light-dark(${light}, ${dark})`
 }
 
-/** CSS linear-gradient over the light-dark() interpolator (@d3/color-legend ramp, as CSS). */
 function legendGradient(stops = 8): string {
 	const parts: string[] = []
 	for (let i = 0; i < stops; i++)
@@ -137,8 +125,10 @@ export function renderTokens(
 	}
 
 	const cells = deriveTurnAgentTokens(ds.hierarchy)
-	const {names, prompts} = threadDirectory(ds)
+	const threadNames = buildThreadNames(ds)
+	const prompts = threadPrompts(ds)
 	const agents = agentColumns(ds)
+
 	const valueOf = (t: TurnStat, agent: string): number =>
 		cells.get(cellKey(t.threadId, t.turnIndex, agent)) ?? 0
 	const val = (tokens: number, agent: string): number =>
@@ -149,8 +139,11 @@ export function renderTokens(
 		metric === 'cost' ? `~${fmtCost(n)}` : `≈${fmtCompact(n)}`
 	const unitLabel =
 		metric === 'cost' ? 'cost (est., assumed rate)' : 'tokens (est.)'
+	const threadFull = (tid: string): string => threadNames.get(tid)?.full ?? tid
+	const threadShort = (tid: string): string =>
+		threadNames.get(tid)?.short ?? tid
 	const turnName = (t: TurnStat): string =>
-		`${names.get(t.threadId) ?? t.threadId} · turn ${t.turnIndex + 1}`
+		`${threadFull(t.threadId)} · turn ${t.turnIndex + 1}`
 
 	function excerptFor(t: TurnStat): PanelContent['text'] {
 		const p = prompts.get(turnKey(t.threadId, t.turnIndex))
@@ -159,114 +152,153 @@ export function renderTokens(
 			? {
 					body,
 					mono: false,
-					label: 'User prompt that opened this turn (excerpt)',
+					label: 'Opening user prompt (excerpt)',
 				}
 			: undefined
 	}
 
-	// ── Toolbar: metric toggle + chart-mode toggle (select pattern used app-wide) ──
-	const metricSel = el('select', {id: 'tok-metric', class: 'select'})
-	metricSel.append(
-		el('option', {value: 'tokens'}, 'tokens (est.)'),
-		el('option', {value: 'cost'}, 'cost (est., assumed rate)'),
+	// ── Editorial Toolbar: segmented metric + trend toggles + relocated Rates popover ──
+	const btnTok = el(
+		'button',
+		{
+			type: 'button',
+			id: 'tok-metric-tokens',
+			class: 'seg-btn',
+			'aria-pressed': String(metric === 'tokens'),
+		},
+		'Tokens (est.)',
 	)
-	metricSel.value = metric
-	metricSel.addEventListener('change', () => {
-		metric = metricSel.value === 'cost' ? 'cost' : 'tokens'
-		focusAfter = 'metric'
-		renderTokens(container, ds)
-	})
-
-	const modeSel = el('select', {id: 'tok-mode', class: 'select'})
-	modeSel.append(
-		el('option', {value: 'lines'}, 'overlaid lines'),
-		el('option', {value: 'multiples'}, 'per-agent multiples'),
+	const btnCost = el(
+		'button',
+		{
+			type: 'button',
+			id: 'tok-metric-cost',
+			class: 'seg-btn',
+			'aria-pressed': String(metric === 'cost'),
+		},
+		'Assumed cost',
 	)
-	modeSel.value = mode
-	modeSel.addEventListener('change', () => {
-		mode = modeSel.value === 'multiples' ? 'multiples' : 'lines'
-		focusAfter = 'mode'
+	btnTok.onclick = () => {
+		if (metric === 'tokens') return
+		metric = 'tokens'
+		focusAfter = 'tok-metric-tokens'
 		renderTokens(container, ds)
-	})
+	}
+	btnCost.onclick = () => {
+		if (metric === 'cost') return
+		metric = 'cost'
+		focusAfter = 'tok-metric-cost'
+		renderTokens(container, ds)
+	}
 
-	// Info panel, modelled on the Sankey view's: grand totals by default, a
-	// hovered/focused heatmap cell or line-chart turn column otherwise — the
-	// content the former tooltips composed for this section. One panel serves
-	// both charts.
+	const btnMult = el(
+		'button',
+		{
+			type: 'button',
+			id: 'tok-mode-multiples',
+			class: 'seg-btn',
+			'aria-pressed': String(mode === 'multiples'),
+		},
+		'Per-agent multiples',
+	)
+	const btnLines = el(
+		'button',
+		{
+			type: 'button',
+			id: 'tok-mode-lines',
+			class: 'seg-btn',
+			'aria-pressed': String(mode === 'lines'),
+		},
+		'Overlaid lines',
+	)
+	btnMult.onclick = () => {
+		if (mode === 'multiples') return
+		mode = 'multiples'
+		focusAfter = 'tok-mode-multiples'
+		renderTokens(container, ds)
+	}
+	btnLines.onclick = () => {
+		if (mode === 'lines') return
+		mode = 'lines'
+		focusAfter = 'tok-mode-lines'
+		renderTokens(container, ds)
+	}
+
+	const ratesWrap = el('span', {class: 'sankey-metric'})
+	mountRatesControl(ratesWrap)
+
+	const toolbar = el(
+		'div',
+		{class: 'toolbar'},
+		el(
+			'span',
+			{class: 'sankey-metric muted small'},
+			'Metric',
+			el(
+				'div',
+				{class: 'seg-group', role: 'group', 'aria-label': 'Metric'},
+				btnTok,
+				btnCost,
+			),
+		),
+		el(
+			'span',
+			{class: 'sankey-metric muted small'},
+			'Trend',
+			el(
+				'div',
+				{class: 'seg-group', role: 'group', 'aria-label': 'Trend layout'},
+				btnMult,
+				btnLines,
+			),
+		),
+		ratesWrap,
+	)
+
+	const totalTokensAll = d3.sum(ds.stats.agents, x => x.tokensEst)
+	const totalCostAll = d3.sum(ds.stats.agents, x =>
+		costOf(x.tokensEst, x.agent),
+	)
+
 	const panel = createInfoPanel({
 		headingId: 'tokens-panel-title',
-		heading: 'Details',
+		heading: 'Consumption details',
 		contentFor: key =>
 			key.startsWith('turn:')
 				? lineContent(Number(key.slice(5)))
 				: cellContent(key),
 		defaultContent: () => ({
-			title: 'Grand totals (est.)',
-			badges: [
-				{text: `${fmtInt(turns.length)} turns`},
-				{text: `${fmtInt(agents.length)} agents`},
+			kicker: `${fmtInt(turns.length)} turns · ${fmtInt(agents.length)} agents`,
+			title: 'Grand totals (estimated)',
+			stats: [
+				['Est. tokens', `≈${fmtCompact(totalTokensAll)}`],
+				['Assumed cost', fmtCost(totalCostAll)],
 			],
 			rows: [
 				...agents.map((a): [string, string] => {
 					const st = ds.stats.agents.find(x => x.agent === a)
 					return [
-						a,
+						agentDisplayName(a),
 						st
-							? `≈${fmtInt(st.tokensEst)} tokens (est.) · ${fmtCost(costOf(st.tokensEst, a))} at assumed rate`
+							? `≈${fmtInt(st.tokensEst)} tok · ${fmtCost(costOf(st.tokensEst, a))}`
 							: '—',
 					]
 				}),
-				[
-					'all agents',
-					`≈${fmtInt(d3.sum(ds.stats.agents, x => x.tokensEst))} tokens (est.) · ${fmtCost(d3.sum(ds.stats.agents, x => costOf(x.tokensEst, x.agent)))} at assumed rates`,
-				],
-				[
-					'method',
-					'tokens = chars ÷ 4 per step, summed; cost = est. tokens × the applicable assumed rate',
-				],
-				[
-					'interaction',
-					'hover or focus a heatmap cell or line column for that turn',
-				],
+				['default rate', `${fmtRate(rateFor(undefined))} (editable)`],
+				['method', 'chars ÷ 4 per step; illustrative cost only'],
 			],
 		}),
 	})
 
-	// One chart column beside the panel — same layout pattern as the Sankey view.
 	const col = el('div', {})
 	const layout = el('div', {class: 'info-layout'}, col, panel.root)
-	container.append(
-		el(
-			'p',
-			{class: 'view-note'},
-			`${fmtInt(turns.length)} turns across ${fmtInt(new Set(turns.map(t => t.threadId)).size)} threads. `,
-			el('strong', {}, 'Everything here is estimated'),
-			' — tokens = characters ÷ 4, cost = estimated tokens × an assumed rate (edit it under ',
-			el('em', {}, 'Rates'),
-			' in the header). Hovering or focusing a heatmap cell or line column swaps the panel to that turn.',
-		),
-		el(
-			'div',
-			{class: 'toolbar'},
-			el(
-				'label',
-				{class: 'sankey-metric', for: 'tok-metric'},
-				'Metric: ',
-				metricSel,
-			),
-			el(
-				'label',
-				{class: 'sankey-metric', for: 'tok-mode'},
-				'Trend: ',
-				modeSel,
-			),
-		),
-		layout,
+	const foot = el(
+		'footer',
+		{class: 'plate-foot'},
+		`Methodology: Tokens are estimated at characters ÷ 4 on every step and summed. Cost multiplies estimated tokens by editable assumed rates (${fmtRate(rateFor(undefined))} default) — never measured provider billing. Heatmap shading uses a square-root scale so smaller turns remain legible beside outlier worker runs.`,
 	)
+	container.append(toolbar, layout, foot)
 
-	// Panel content builders — revived from the pre-2026-09-03 tooltips:
-	// heatmap cells showed the turn/agent metric plus the turn's context; line
-	// columns showed per-agent deltas and cumulative values.
 	function cellContent(key: string): PanelContent | null {
 		for (const t of turns) {
 			for (const a of agents) {
@@ -274,24 +306,30 @@ export function renderTokens(
 				const v = valueOf(t, a)
 				const shown = val(v, a)
 				const rows: [string, string][] = [
-					['agent', a],
+					['agent', agentDisplayName(a)],
 					[
 						unitLabel,
 						metric === 'cost'
 							? `${fmtCost(shown)} · ${fmtRate(rateFor(a))}`
 							: `≈${fmtInt(v)} (chars ÷ 4)`,
 					],
-					['context at end of turn', `${fmtInt(t.contextCharsAtEnd)} chars`],
+					['context at end', `${fmtInt(t.contextCharsAtEnd)} chars`],
 					['user prompt', `${fmtInt(t.userPromptChars)} chars`],
-					['steps', fmtInt(t.steps)],
-					['tool calls', fmtInt(t.toolCalls)],
+					['steps / tools', `${fmtInt(t.steps)} / ${fmtInt(t.toolCalls)}`],
 					['started', fmtTime(t.startedAt)],
 				]
 				if (v === 0)
-					rows.splice(1, 0, ['note', `no observed steps by ${a} in this turn`])
+					rows.splice(1, 0, [
+						'note',
+						`no observed steps by ${agentDisplayName(a)} in this turn`,
+					])
 				return {
+					kicker: `Turn cell · ${agentDisplayName(a)}`,
 					title: turnName(t),
-					badges: [{text: 'turn'}, {text: a}],
+					stats: [
+						[metric === 'cost' ? 'Assumed cost' : 'Est. tokens', fmtVal(shown)],
+						['Steps', fmtInt(t.steps)],
+					],
 					rows,
 					text: excerptFor(t),
 				}
@@ -305,148 +343,138 @@ export function renderTokens(
 		if (!t) return null
 		const rows: [string, string][] = [
 			...series.map((s): [string, string] => [
-				s.agent,
-				`+${fmtVal(s.delta[i] ?? 0)}${metric === 'cost' ? '' : ' (est.)'} · cumulative ${fmtVal(s.cum[i] ?? 0)}`,
+				agentDisplayName(s.agent),
+				`+${fmtVal(s.delta[i] ?? 0)} · cum. ${fmtVal(s.cum[i] ?? 0)}`,
 			]),
 			[
 				'all agents',
-				`+${fmtVal(turnTotals[i] ?? 0)}${metric === 'cost' ? '' : ' (est.)'} · cumulative ${fmtVal(cumulativeTotals[i] ?? 0)}`,
+				`+${fmtVal(turnTotals[i] ?? 0)} · cum. ${fmtVal(cumulativeTotals[i] ?? 0)}`,
 			],
 			['started', fmtTime(t.startedAt)],
 		]
-		if (metric === 'cost')
-			rows.unshift([
-				'note',
-				`cost = each agent's est. tokens × that agent class's assumed rate; per-agent overrides are applied separately; not provider data`,
-			])
 		return {
-			title: `${turnName(t)} (#${i + 1} globally)`,
-			badges: [{text: 'turn'}],
+			kicker: `Global turn #${i + 1} of ${turns.length}`,
+			title: turnName(t),
+			stats: [
+				['Turn delta', fmtVal(turnTotals[i] ?? 0)],
+				['Cumulative', fmtVal(cumulativeTotals[i] ?? 0)],
+			],
 			rows,
 			text: excerptFor(t),
 		}
 	}
 
-	// ── 1. Heatmap ──────────────────────────────────────────────────────────
+	// ── 1. Compact Heatmap (√ scale) ────────────────────────────────────────
 	const maxCell =
 		d3.max(turns, t => d3.max(agents, a => val(valueOf(t, a), a))) ?? 0
 	const heatHost = el('div', {
 		class: 'chart-host tok-chart',
 		role: 'group',
-		'aria-label': `Heatmap of estimated tokens by turn (row) and agent (column); arrow keys move between cells`,
+		'aria-label': `Heatmap of estimated ${metric} by turn (row) and agent (column); arrow keys move between cells`,
 	})
 	const heatLegend = el('div', {class: 'tok-legend', 'aria-hidden': 'true'})
 	col.append(
-		el('h3', {}, 'Heatmap — tokens est. by turn and agent'),
+		el(
+			'h3',
+			{class: 'tok-subhead'},
+			metric === 'cost'
+				? 'Turn × agent matrix — assumed cost'
+				: 'Turn × agent matrix — estimated tokens',
+		),
 		el('div', {class: 'tok-legend-row'}, heatLegend),
 		heatHost,
 	)
 
-	const heatNote = el(
-		'p',
-		{class: 'view-note muted small'},
-		'Rows are turns in global start-time order (a turn = one user message + everything until the next); columns are agents. ',
-		'Colour = what that agent produced in that turn, so a turn with a user message, orchestrator steps and worker steps fills several cells. ',
-		'Pale/empty cells mean the agent produced nothing in that turn.',
-	)
-	col.append(heatNote)
+	const normSqrt = (v: number): number =>
+		maxCell > 0 ? Math.sqrt(Math.max(0, v) / maxCell) : 0
 
 	const drawHeat = (width: number): void => {
 		heatHost.replaceChildren()
-		const m = {
-			top: 34,
-			right: 16,
-			bottom: 12,
-			left: Math.min(240, Math.max(150, width * 0.22)),
-		}
-		const rowH = 36
+		const leftW = Math.min(230, Math.max(150, width * 0.3))
+		const availW = Math.max(180, width - leftW - 16)
+		const colW = Math.min(165, availW / agents.length)
+		const svgW = Math.min(width, leftW + colW * agents.length + 16)
+		const m = {top: 32, right: 12, bottom: 10, left: leftW}
+		const rowH = 34
 		const height = m.top + turns.length * rowH + m.bottom
-		const colW = (width - m.left - m.right) / agents.length
 
 		const svg = d3
 			.create('svg')
-			.attr('viewBox', `0 0 ${width} ${height}`)
-			.attr('width', width)
+			.attr('viewBox', `0 0 ${svgW} ${height}`)
+			.attr('width', svgW)
 			.attr('height', height)
 			.attr('role', 'img')
 			.attr('aria-label', 'Heatmap of estimated tokens per turn and agent')
-		const scale = d3
-			.scaleSequential(seqInterpolator)
-			.domain([0, Math.max(1, maxCell)])
 
-		// Column headers: agent colour dot + name (monospace, like the rest of the app)
 		agents.forEach((a, j) => {
 			const x = m.left + colW * j
 			svg
 				.append('circle')
 				.attr('cx', x + 7)
-				.attr('cy', m.top - 20)
-				.attr('r', 5)
+				.attr('cy', m.top - 18)
+				.attr('r', 4.5)
 				.attr('fill', agentColor(a))
 				.attr('aria-hidden', 'true')
 			svg
 				.append('text')
 				.attr('class', 'tok-colhead')
-				.attr('x', x + 17)
-				.attr('y', m.top - 16)
-				.text(a)
+				.attr('x', x + 16)
+				.attr('y', m.top - 14)
+				.text(agentDisplayName(a))
 		})
 
 		turns.forEach((t, i) => {
 			const y = m.top + i * rowH
-			const name = names.get(t.threadId) ?? t.threadId
-			const short = name.length > 30 ? `${name.slice(0, 29)}…` : name
+			const short = threadShort(t.threadId)
+			const full = threadFull(t.threadId)
 			const label = svg
 				.append('text')
 				.attr('class', 'tok-rowlabel')
 				.attr('x', m.left - 10)
 				.attr('y', y + rowH / 2 + 4)
 				.attr('text-anchor', 'end')
-				.text(`${short} #${t.turnIndex + 1}`)
-			label.append('title').text(name) // full thread name for the truncated row label
+				.text(`T${i + 1} · ${short}`)
+			label.append('title').text(`${full} · turn ${t.turnIndex + 1}`)
+
 			agents.forEach((a, j) => {
 				const v = valueOf(t, a)
 				const shown = val(v, a)
+				const tPos = normSqrt(shown)
 				const x = m.left + colW * j
 				svg
 					.append('rect')
 					.attr('class', `tok-cell${v === 0 ? ' is-empty' : ''}`)
 					.attr('x', x)
 					.attr('y', y)
-					.attr('width', Math.max(2, colW - 3))
+					.attr('width', Math.max(2, colW - 4))
 					.attr('height', rowH - 4)
-					.attr('rx', 3)
-					.attr('fill', v === 0 ? 'var(--bg-3)' : scale(shown))
+					.attr('rx', 2)
+					.attr('fill', v === 0 ? 'var(--bg-2)' : seqInterpolator(tPos))
 					.attr('data-hit', 'cell')
 					.attr('data-key', cellKey(t.threadId, t.turnIndex, a))
 					.attr('tabindex', -1)
 					.attr('role', 'button')
 					.attr(
 						'aria-label',
-						`${a} in turn ${t.turnIndex + 1} of ${name}: ${fmtVal(shown)}${metric === 'cost' ? ' (assumed rate)' : ' (est.)'}`,
+						`${agentDisplayName(a)} in turn ${t.turnIndex + 1} of ${full}: ${fmtVal(shown)}${metric === 'cost' ? ' (assumed rate)' : ' (est.)'}`,
 					)
-				// Self-revealing data: the value prints on its own mark. Ink switches
-				// by scale position (t > ~0.55 = dark fill → light ink, theme-aware
-				// via light-dark()); zero prints muted; narrow columns suppress text
-				// rather than clip it.
-				if (colW >= 44) {
-					const tPos = shown / Math.max(1, maxCell)
+				if (colW >= 46) {
 					svg
 						.append('text')
 						.attr('class', 'tok-cellval')
-						.attr('x', x + Math.max(2, colW - 3) / 2)
+						.attr('x', x + Math.max(2, colW - 4) / 2)
 						.attr('y', y + rowH / 2 + 4)
 						.attr('text-anchor', 'middle')
 						.attr(
 							'fill',
 							v === 0
 								? 'var(--fg-muted)'
-								: tPos > 0.55
-									? 'light-dark(#f8fafc, #0b1220)'
+								: tPos > 0.56
+									? 'light-dark(#faf8f4, #131210)'
 									: 'var(--fg)',
 						)
 						.attr('aria-hidden', 'true')
-						.text(v === 0 ? '0' : fmtValCompact(shown))
+						.text(v === 0 ? '—' : fmtValCompact(shown))
 				}
 			})
 		})
@@ -455,12 +483,15 @@ export function renderTokens(
 		makeRoving(heatHost, '[data-hit]')
 	}
 
-	// Sequential colour legend (@d3/color-legend): gradient bar + min/mid/max ticks.
 	const drawHeatLegend = (): void => {
 		heatLegend.replaceChildren()
 		const maxShown = maxCell
 		heatLegend.append(
-			el('span', {class: 'tok-legend-title muted small'}, unitLabel),
+			el(
+				'span',
+				{class: 'tok-legend-title muted small'},
+				`${unitLabel} (√ scale)`,
+			),
 		)
 		const bar = el('span', {class: 'tok-legend-bar'})
 		bar.style.background = legendGradient()
@@ -469,16 +500,14 @@ export function renderTokens(
 			el('span', {class: 'tok-legend-tick mono muted small'}, s)
 		heatLegend.append(
 			lab(metric === 'cost' ? fmtCost(0) : '0'),
-			lab(fmtValCompact(maxShown / 2)),
+			lab(fmtValCompact(maxShown / 4)),
 			lab(fmtValCompact(maxShown)),
 		)
 	}
 	drawHeatLegend()
-
 	chartResizeScope.observe(heatHost, drawHeat)
 
-	// ── 2. Cumulative trend: overlaid lines | per-agent multiples ───────────
-	// Per agent: delta per turn slot + running cumulative (flat where the agent did nothing).
+	// ── 2. Cumulative trend ─────────────────────────────────────────────────
 	const series = buildAgentSeries(agents, turns.length, (agent, turnIndex) => {
 		const turn = turns[turnIndex]
 		return turn ? val(valueOf(turn, agent), agent) : 0
@@ -495,27 +524,14 @@ export function renderTokens(
 	col.append(
 		el(
 			'h3',
-			{},
+			{class: 'tok-subhead'},
 			mode === 'multiples'
-				? 'Small multiples — cumulative consumption per agent'
-				: 'Cumulative tokens est. by agent',
+				? 'Cumulative trajectory — per agent (shared scale)'
+				: 'Cumulative trajectory — overlaid lines',
 		),
 		lineHost,
 	)
-	col.append(
-		el(
-			'p',
-			{class: 'view-note muted small'},
-			'X = turn index in global start-time order (not wall-clock time — turns have very different durations). ',
-			mode === 'multiples'
-				? 'One panel per agent plus an all-agents total, every panel on the same y-scale so they are comparable; panel titles carry identity. '
-				: 'Each line is one agent\u2019s running total; labels sit at line ends where they fit. ',
-			'Hover, or focus a turn with the keyboard, to highlight that turn\u2019s crosshair and points and swap the panel to that turn.',
-		),
-	)
 
-	// Geometry + focus hooks refreshed by each drawLine; the interaction listeners below
-	// are attached to lineHost ONCE (drawLine re-runs on resize and must not stack them).
 	let lineGeom = {left: 64, step: 1, n: 1}
 	let showFocusFn: ((i: number) => void) | null = null
 	let hideFocusFn: (() => void) | null = null
@@ -537,8 +553,8 @@ export function renderTokens(
 		}
 
 		if (mode === 'lines') {
-			const m = {top: 16, right: 120, bottom: 40, left: 64}
-			const height = 340
+			const m = {top: 18, right: 124, bottom: 38, left: 60}
+			const height = 300
 			const yMax = d3.max(cumulativeTotals) ?? 1
 			const x = d3
 				.scaleLinear()
@@ -563,12 +579,12 @@ export function renderTokens(
 				.attr('x', width - m.right)
 				.attr('y', height - 6)
 				.attr('text-anchor', 'end')
-				.text('turn index (start-time order) →')
+				.text('turn index →')
 			svg
 				.append('text')
 				.attr('class', 'axis-label')
 				.attr('x', m.left)
-				.attr('y', m.top - 2)
+				.attr('y', m.top - 4)
 				.text(cumLabel)
 
 			svg
@@ -579,7 +595,7 @@ export function renderTokens(
 					d3
 						.axisBottom(x)
 						.ticks(n)
-						.tickFormat(d => `#${(d as number) + 1}`),
+						.tickFormat(d => `T${(d as number) + 1}`),
 				)
 			svg
 				.append('g')
@@ -600,7 +616,7 @@ export function renderTokens(
 						.selectAll('.tick line')
 						.clone()
 						.attr('x2', width - m.left - m.right)
-						.attr('stroke-opacity', 0.1)
+						.attr('stroke-opacity', 0.12)
 						.attr('class', 'tok-gridline'),
 				)
 
@@ -621,8 +637,6 @@ export function renderTokens(
 					.attr('d', line)
 			})
 
-			// Direct labels at line ends (@d3/multi-line-chart/2 hover-label
-			// convention) — identity lives at the mark, so no legend is needed.
 			const placedY: number[] = []
 			series.forEach(s => {
 				const last = n - 1
@@ -635,7 +649,7 @@ export function renderTokens(
 					.attr('x', x(last) + 8)
 					.attr('y', yPos + 4)
 					.attr('fill', agentColor(s.agent))
-					.text(s.agent)
+					.text(agentDisplayName(s.agent))
 				if (clash) label.style('display', 'none')
 				else placedY.push(yPos)
 			})
@@ -683,7 +697,7 @@ export function renderTokens(
 					.attr('role', 'button')
 					.attr(
 						'aria-label',
-						`Turn ${i + 1} (${names.get(t.threadId) ?? t.threadId}): total ${fmtVal(turnTotals[i] ?? 0)} ${metric === 'cost' ? '(assumed rates)' : '(est.)'}`,
+						`Turn ${i + 1} (${threadFull(t.threadId)}): total ${fmtVal(turnTotals[i] ?? 0)} ${metric === 'cost' ? '(assumed rates)' : '(est.)'}`,
 					)
 			})
 			lineHost.append(svg.node()!)
@@ -692,24 +706,21 @@ export function renderTokens(
 			showFocusFn = showFocus
 			hideFocusFn = hideFocus
 		} else {
-			// Per-agent small multiples + one all-agents total, all on ONE shared
-			// y-scale (the pattern proven in context.ts) — replaces the former
-			// stacked-area bands, which hid each agent's own trajectory.
 			const panels: Panel[] = [
 				...series.map(
 					(s): Panel => ({
-						label: s.agent,
+						label: agentDisplayName(s.agent),
 						color: agentColor(s.agent),
 						values: s.cum,
 					}),
 				),
-				{label: 'all agents', color: 'var(--fg)', values: cumulativeTotals},
+				{label: 'All agents', color: 'var(--fg)', values: cumulativeTotals},
 			]
 			const yMax = d3.max(cumulativeTotals) ?? 1
-			const m = {top: 24, right: 120, bottom: 40, left: 64}
+			const m = {top: 22, right: 96, bottom: 36, left: 60}
 			const titleH = 18
-			const plotH = 120
-			const gap = 14
+			const plotH = 84
+			const gap = 16
 			const height =
 				m.top + panels.length * (titleH + plotH + gap) - gap + m.bottom
 			const x = d3
@@ -732,7 +743,7 @@ export function renderTokens(
 				.append('text')
 				.attr('class', 'axis-label')
 				.attr('x', m.left)
-				.attr('y', m.top - 12)
+				.attr('y', m.top - 10)
 				.text(cumLabel)
 			svg
 				.append('text')
@@ -740,7 +751,7 @@ export function renderTokens(
 				.attr('x', width - m.right)
 				.attr('y', height - 6)
 				.attr('text-anchor', 'end')
-				.text('turn index (start-time order) →')
+				.text('turn index →')
 
 			const crosshairs: Sel<SVGLineElement>[] = []
 			const dotGroups: {
@@ -756,13 +767,11 @@ export function renderTokens(
 				const bottom = top + plotH
 				const y = d3.scaleLinear().domain([0, yMax]).nice().range([bottom, top])
 
-				// Panel title: colour swatch + agent name — identity at the panel,
-				// never a remote legend.
 				svg
 					.append('circle')
 					.attr('cx', m.left + 5)
 					.attr('cy', titleY - 4)
-					.attr('r', 5)
+					.attr('r', 4.5)
 					.attr('fill', p.color)
 					.attr('aria-hidden', 'true')
 				svg
@@ -779,7 +788,7 @@ export function renderTokens(
 					.call(
 						d3
 							.axisLeft(y)
-							.ticks(3)
+							.ticks(2)
 							.tickFormat(d =>
 								metric === 'cost'
 									? fmtCost(d as number)
@@ -802,7 +811,6 @@ export function renderTokens(
 					.attr('class', 'tok-line')
 					.attr('d', line)
 
-				// End label carries the panel's final VALUE — the number at the mark.
 				svg
 					.append('text')
 					.attr('class', 'tok-endlabel')
@@ -821,7 +829,6 @@ export function renderTokens(
 				crosshairs.push(cross)
 				dotGroups.push({dots, y, p})
 
-				// Hit columns per panel: turn:i keys unchanged from the lines mode.
 				turns.forEach((t, i) => {
 					svg
 						.append('rect')
@@ -837,12 +844,11 @@ export function renderTokens(
 						.attr('role', 'button')
 						.attr(
 							'aria-label',
-							`Turn ${i + 1} (${names.get(t.threadId) ?? t.threadId}): total ${fmtVal(turnTotals[i] ?? 0)} ${metric === 'cost' ? '(assumed rates)' : '(est.)'}`,
+							`Turn ${i + 1} (${threadFull(t.threadId)}): total ${fmtVal(turnTotals[i] ?? 0)} ${metric === 'cost' ? '(assumed rates)' : '(est.)'}`,
 						)
 				})
 			})
 
-			// X-axis ticks once, under the last panel — every panel shares the x scale.
 			const lastBottom =
 				m.top + (panels.length - 1) * (titleH + plotH + gap) + titleH + plotH
 			svg
@@ -853,7 +859,7 @@ export function renderTokens(
 					d3
 						.axisBottom(x)
 						.ticks(n)
-						.tickFormat(d => `#${(d as number) + 1}`),
+						.tickFormat(d => `T${(d as number) + 1}`),
 				)
 
 			const showFocus = (i: number): void => {
@@ -912,17 +918,6 @@ export function renderTokens(
 
 	chartResizeScope.observe(lineHost, drawLine)
 
-	// Honest-labelling footnote (also the schema gap note: stats.turns carries no thread display name).
-	col.append(
-		el(
-			'p',
-			{class: 'view-note muted small'},
-			`Tokens are estimated at chars ÷ 4 on every step, then summed — nothing here is measured usage. `,
-			`Cost = estimated tokens × assumed rates (${fmtRate(rateFor(undefined))} default, with per-class overrides under Rates) — illustrative only; no provider usage is measured. `,
-			`With only ${fmtInt(turns.length)} turns the lines are short; cumulative totals still show where consumption concentrated.`,
-		),
-	)
-
 	wireInfoPanel([heatHost, lineHost], panel, mark =>
 		mark.classList.contains('tok-hit')
 			? `turn:${mark.getAttribute('data-key') ?? ''}`
@@ -931,11 +926,8 @@ export function renderTokens(
 
 	disposeRates = onRatesChange(container, () => renderTokens(container, ds))
 
-	// Restore focus to the toggle the reader just used (re-render recreated the DOM).
 	if (focusAfter) {
-		document
-			.getElementById(focusAfter === 'metric' ? 'tok-metric' : 'tok-mode')
-			?.focus()
+		document.getElementById(focusAfter)?.focus()
 		focusAfter = null
 	}
 	return () => {

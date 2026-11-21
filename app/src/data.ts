@@ -1,107 +1,243 @@
-import type { LoadedDataset, LoopNode, LoopsDataset, NodeKind } from './types';
+import type {LoadedDataset, LoopNode, LoopsDataset, NodeKind} from './types'
 
-const REAL_URL = './data/loops.json';
-const FIXTURE_URL = './data/loops.fixture.json';
+const REAL_URL = './data/loops.json'
+const FIXTURE_URL = './data/loops.fixture.json'
 
 function isRecord(x: unknown): x is Record<string, unknown> {
-  return typeof x === 'object' && x !== null && !Array.isArray(x);
+	return typeof x === 'object' && x !== null && !Array.isArray(x)
 }
 
 /** Light structural check — enough to fail loudly on the wrong file, not a full validator. */
-export function assertDataset(x: unknown, url: string): asserts x is LoopsDataset {
-  if (!isRecord(x)) throw new Error(`${url}: not an object`);
-  if (x.version !== 1) throw new Error(`${url}: version must be 1 (got ${String(x.version)})`);
-  for (const k of ['generatedAt', 'source', 'hierarchy', 'stats', 'flows', 'delegation', 'loopModel'] as const) {
-    if (!(k in x)) throw new Error(`${url}: missing top-level field "${k}"`);
-  }
-  const src = x.source;
-  if (!isRecord(src) || typeof src.storage !== 'string') throw new Error(`${url}: source.storage must be a string`);
-  const flows = x.flows;
-  if (!isRecord(flows) || !Array.isArray(flows.nodes) || !Array.isArray(flows.links)) throw new Error(`${url}: flows.nodes/links must be arrays`);
-  const lm = x.loopModel;
-  if (!isRecord(lm) || !Array.isArray(lm.loops)) throw new Error(`${url}: loopModel.loops must be an array`);
-  if (!isRecord(x.hierarchy) || typeof x.hierarchy.id !== 'string') throw new Error(`${url}: hierarchy must be a LoopNode`);
+export function assertDataset(
+	x: unknown,
+	url: string,
+): asserts x is LoopsDataset {
+	if (!isRecord(x)) throw new Error(`${url}: not an object`)
+	if (x.version !== 1)
+		throw new Error(`${url}: version must be 1 (got ${String(x.version)})`)
+	for (const k of [
+		'generatedAt',
+		'source',
+		'hierarchy',
+		'stats',
+		'flows',
+		'delegation',
+		'loopModel',
+	] as const) {
+		if (!(k in x)) throw new Error(`${url}: missing top-level field "${k}"`)
+	}
+	const src = x.source
+	if (!isRecord(src) || typeof src.storage !== 'string')
+		throw new Error(`${url}: source.storage must be a string`)
+	const flows = x.flows
+	if (
+		!isRecord(flows) ||
+		!Array.isArray(flows.nodes) ||
+		!Array.isArray(flows.links)
+	)
+		throw new Error(`${url}: flows.nodes/links must be arrays`)
+	const lm = x.loopModel
+	if (!isRecord(lm) || !Array.isArray(lm.loops))
+		throw new Error(`${url}: loopModel.loops must be an array`)
+	if (!isRecord(x.hierarchy) || typeof x.hierarchy.id !== 'string')
+		throw new Error(`${url}: hierarchy must be a LoopNode`)
 }
 
 async function fetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-  // SPA hosts answer missing files with index.html + 200; treat non-JSON as "file not present".
-  const type = res.headers.get('content-type') ?? '';
-  if (!/json/i.test(type)) throw new Error(`${url}: not found (server returned ${type || 'unknown content type'})`);
-  return res.json();
+	const res = await fetch(url, {cache: 'no-store'})
+	if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
+	// SPA hosts answer missing files with index.html + 200; treat non-JSON as "file not present".
+	const type = res.headers.get('content-type') ?? ''
+	if (!/json/i.test(type))
+		throw new Error(
+			`${url}: not found (server returned ${type || 'unknown content type'})`,
+		)
+	return res.json()
 }
 
 /** Try the real dataset first; fall back to the fixture with an explicit note. */
 export async function loadDataset(): Promise<LoadedDataset> {
-  let realError = '';
-  try {
-    const json = await fetchJson(REAL_URL);
-    assertDataset(json, REAL_URL);
-    const isFixture = /fixture/i.test(json.source.storage);
-    return { data: json, url: REAL_URL, isFixture, loadNote: isFixture ? 'data/loops.json is present but declares itself a fixture.' : 'Loaded data/loops.json.' };
-  } catch (e) {
-    realError = e instanceof Error ? e.message : String(e);
-  }
-  const json = await fetchJson(FIXTURE_URL);
-  assertDataset(json, FIXTURE_URL);
-  return { data: json, url: FIXTURE_URL, isFixture: true, loadNote: `data/loops.json unavailable (${realError}); showing the fixture.` };
+	let realError = ''
+	try {
+		const json = await fetchJson(REAL_URL)
+		assertDataset(json, REAL_URL)
+		const isFixture = /fixture/i.test(json.source.storage)
+		return {
+			data: json,
+			url: REAL_URL,
+			isFixture,
+			loadNote: isFixture
+				? 'data/loops.json is present but declares itself a fixture.'
+				: 'Loaded data/loops.json.',
+		}
+	} catch (e) {
+		realError = e instanceof Error ? e.message : String(e)
+	}
+	const json = await fetchJson(FIXTURE_URL)
+	assertDataset(json, FIXTURE_URL)
+	return {
+		data: json,
+		url: FIXTURE_URL,
+		isFixture: true,
+		loadNote: `data/loops.json unavailable (${realError}); showing the fixture.`,
+	}
 }
 
 // ---------------------------------------------------------------------------
 // Derived indexes shared by several views (computed once, from observed data).
 
-export interface StepRef { node: LoopNode; thread: LoopNode; turn: LoopNode; stepIndexInThread: number }
+export interface StepRef {
+	node: LoopNode
+	thread: LoopNode
+	turn: LoopNode
+	stepIndexInThread: number
+}
 
 /**
  * The app-wide turn key convention: `threadId#turnIndex` (turnIndex is
  * 0-based, as stored). One builder so the string is never reassembled by hand.
  */
-export const turnKey = (threadId: string, turnIndex: number): string => `${threadId}#${turnIndex}`;
+export const turnKey = (threadId: string, turnIndex: number): string =>
+	`${threadId}#${turnIndex}`
 
-const STEP_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>(['user-message', 'reasoning', 'text', 'tool-call', 'tool-result', 'task', 'wake']);
+const STEP_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>([
+	'user-message',
+	'reasoning',
+	'text',
+	'tool-call',
+	'tool-result',
+	'task',
+	'wake',
+])
 
-export function isStepKind(kind: NodeKind): boolean { return STEP_KINDS.has(kind); }
+export function isStepKind(kind: NodeKind): boolean {
+	return STEP_KINDS.has(kind)
+}
 
 /** Flatten hierarchy into ordered steps per thread (worker threads are their own threads). */
-export function collectThreads(root: LoopNode): Map<string, { thread: LoopNode; steps: StepRef[] }> {
-  const out = new Map<string, { thread: LoopNode; steps: StepRef[] }>();
-  const visitThread = (thread: LoopNode) => {
-    const entry = { thread, steps: [] as StepRef[] };
-    const tid = thread.meta?.threadId ?? thread.id;
-    out.set(tid, entry);
-    for (const turn of thread.children ?? []) {
-      if (turn.kind !== 'turn') { if (turn.kind === 'thread' || turn.kind === 'worker-thread') visitThread(turn); continue; }
-      for (const step of turn.children ?? []) {
-        // real data nests worker threads directly under the dispatching turn
-        if (step.kind === 'worker-thread' || step.kind === 'thread') { visitThread(step); continue; }
-        if (isStepKind(step.kind)) entry.steps.push({ node: step, thread, turn, stepIndexInThread: entry.steps.length });
-        // nested worker threads under a dispatching task
-        for (const c of step.children ?? []) if (c.kind === 'worker-thread' || c.kind === 'thread') visitThread(c);
-      }
-    }
-  };
-  const walk = (n: LoopNode) => {
-    if (n.kind === 'thread' || n.kind === 'worker-thread') { visitThread(n); return; }
-    for (const c of n.children ?? []) walk(c);
-  };
-  walk(root);
-  return out;
+export function collectThreads(
+	root: LoopNode,
+): Map<string, {thread: LoopNode; steps: StepRef[]}> {
+	const out = new Map<string, {thread: LoopNode; steps: StepRef[]}>()
+	const visitThread = (thread: LoopNode) => {
+		const entry = {thread, steps: [] as StepRef[]}
+		const tid = thread.meta?.threadId ?? thread.id
+		out.set(tid, entry)
+		for (const turn of thread.children ?? []) {
+			if (turn.kind !== 'turn') {
+				if (turn.kind === 'thread' || turn.kind === 'worker-thread')
+					visitThread(turn)
+				continue
+			}
+			for (const step of turn.children ?? []) {
+				// real data nests worker threads directly under the dispatching turn
+				if (step.kind === 'worker-thread' || step.kind === 'thread') {
+					visitThread(step)
+					continue
+				}
+				if (isStepKind(step.kind))
+					entry.steps.push({
+						node: step,
+						thread,
+						turn,
+						stepIndexInThread: entry.steps.length,
+					})
+				// nested worker threads under a dispatching task
+				for (const c of step.children ?? [])
+					if (c.kind === 'worker-thread' || c.kind === 'thread') visitThread(c)
+			}
+		}
+	}
+	const walk = (n: LoopNode) => {
+		if (n.kind === 'thread' || n.kind === 'worker-thread') {
+			visitThread(n)
+			return
+		}
+		for (const c of n.children ?? []) walk(c)
+	}
+	walk(root)
+	return out
 }
 
 /** Map a step node to its Sankey stage id (same convention as SCHEMA.md flows). */
 export function stageOf(node: LoopNode): string {
-  switch (node.kind) {
-    case 'user-message': return 'user';
-    case 'reasoning': return 'reason';
-    case 'tool-call': return `tool:${node.meta?.toolName ?? 'unknown'}`;
-    case 'tool-result': return 'observe';
-    case 'task': return 'delegate';
-    case 'worker-thread': return 'worker';
-    case 'wake': return 'wake';
-    case 'text': return 'respond';
-    default: return node.kind;
-  }
+	switch (node.kind) {
+		case 'user-message':
+			return 'user'
+		case 'reasoning':
+			return 'reason'
+		case 'tool-call':
+			return `tool:${node.meta?.toolName ?? 'unknown'}`
+		case 'tool-result':
+			return 'observe'
+		case 'task':
+			return 'delegate'
+		case 'worker-thread':
+			return 'worker'
+		case 'wake':
+			return 'wake'
+		case 'text':
+			return 'respond'
+		default:
+			return node.kind
+	}
 }
 
+const RAW_ID_RE = /^(th|prj|msg|tsk)_[a-z0-9_-]{6,}$/i
 
+function truncateWords(text: string, maxLen: number): string {
+	const clean = text.trim().replace(/\s+/g, ' ')
+	if (clean.length <= maxLen) return clean
+	const slice = clean.slice(0, maxLen - 1)
+	const lastSpace = slice.lastIndexOf(' ')
+	return `${(lastSpace > maxLen * 0.55 ? slice.slice(0, lastSpace) : slice).replace(/[,:;–—-]+$/, '')}…`
+}
+
+export interface ThreadLabel {
+	full: string
+	short: string
+	isWorker: boolean
+}
+
+/**
+ * Derive human-readable display names for every thread id so raw `th_…` hashes
+ * never leak into chart axis labels, table rows, or breadcrumbs.
+ */
+export function buildThreadNames(ds: LoopsDataset): Map<string, ThreadLabel> {
+	const out = new Map<string, ThreadLabel>()
+	let orchCount = 0
+	let workerCount = 0
+	for (const [tid, {thread}] of collectThreads(ds.hierarchy)) {
+		const isWorker =
+			thread.kind === 'worker-thread' ||
+			(thread.meta?.agent ?? '').startsWith('worker:')
+		const rawName = (thread.name ?? '').trim()
+		let full = rawName
+		if (!full || full === tid || RAW_ID_RE.test(full)) {
+			if (isWorker) {
+				workerCount += 1
+				full =
+					workerCount === 1 ? 'Worker thread' : `Worker thread #${workerCount}`
+			} else {
+				orchCount += 1
+				full =
+					orchCount === 1
+						? 'Orchestrator thread'
+						: `Orchestrator thread #${orchCount}`
+			}
+		}
+		const short = truncateWords(full, 30)
+		out.set(tid, {full, short, isWorker})
+	}
+	return out
+}
+
+/** Human-readable project name (falls back to root delegation task title when hierarchy.name is a raw `prj_…` id). */
+export function projectDisplayName(ds: LoopsDataset): string {
+	const raw = (ds.hierarchy.name ?? '').trim()
+	if (raw && !RAW_ID_RE.test(raw)) return raw
+	const firstTask = ds.delegation.children?.[0]?.name?.trim()
+	if (firstTask && !RAW_ID_RE.test(firstTask))
+		return truncateWords(firstTask, 48)
+	return 'Observed project'
+}

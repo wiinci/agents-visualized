@@ -1,19 +1,21 @@
 import * as d3 from 'd3'
 import type {LoopsDataset} from '../types'
-import {collectThreads, type StepRef} from '../data'
-import {agentColor, fmtCompact, fmtInt, nodeAriaLabel} from '../format'
+import {buildThreadNames, collectThreads, type StepRef} from '../data'
+import {
+	agentColor,
+	agentDisplayName,
+	fmtCompact,
+	fmtInt,
+	nodeAriaLabel,
+} from '../format'
 import {createResizeScope, el, makeRoving} from '../util'
 import {onRatesChange} from '../cost'
 import {createInfoPanel, nodePanel, withCostRow, wireInfoPanel} from '../panel'
 
 /**
- * Small multiples, one per thread: contextChars (cumulative characters of
- * everything earlier in the thread) over step index. The line carries the
- * trajectory; bars underneath show each step's own size (chars) — no area
- * fill, which added unwarranted ink without information. Turn boundaries
- * are marked with vertical rules. Points are focusable and carry the step's
- * name and sizes in their aria-label; hovering or focusing a point swaps the
- * section's info panel to that step (default: a trajectory overview).
+ * Plate V — Small multiples, one per thread: cumulative context characters over
+ * step index. Defaults to a shared Y-axis so thread scales compare honestly,
+ * with a segmented toggle to fit each thread independently.
  */
 export function renderContext(
 	container: HTMLElement,
@@ -28,116 +30,168 @@ export function renderContext(
 		return () => {}
 	}
 
+	const threadNames = buildThreadNames(ds)
+	const nameOf = (tid: string, fallback: string) =>
+		threadNames.get(tid)?.full ?? fallback
+
 	const globalMax =
 		d3.max(threads, t =>
 			d3.max(t.steps, s => s.node.meta?.contextChars ?? 0),
 		) ?? 1
-	const note = el(
-		'p',
-		{class: 'view-note'},
-		`One panel per thread (${threads.length}). Line/area = context size (chars) at each step; bars = that step's own size; dashed rules = turn boundaries. `,
-		`Shared y-axis (max ${fmtCompact(globalMax)} chars) so threads are comparable. Hovering or focusing a point swaps the info panel to that step.`,
+
+	let sharedScale = true
+
+	// Segmented scale toggle
+	const btnShared = el(
+		'button',
+		{type: 'button', class: 'seg-btn', 'aria-pressed': 'true'},
+		'Shared scale',
 	)
+	const btnLocal = el(
+		'button',
+		{type: 'button', class: 'seg-btn', 'aria-pressed': 'false'},
+		'Fit each thread',
+	)
+	const scaleGroup = el(
+		'div',
+		{class: 'seg-group', role: 'group', 'aria-label': 'Vertical axis scale'},
+		btnShared,
+		btnLocal,
+	)
+	const toolbar = el(
+		'div',
+		{class: 'toolbar'},
+		el('span', {class: 'sankey-metric muted small'}, 'Y-axis', scaleGroup),
+	)
+
 	const grid = el('div', {class: 'multiples'})
 
-	// Info panel, modelled on the Sankey view's: a trajectory overview by
-	// default, a hovered/focused step's details otherwise — the content the
-	// former tooltips composed for this section (node fields plus thread-step
-	// position and turn). One panel serves every card.
-	const stepById = new Map<string, {s: StepRef; total: number}>()
-	for (const t of threads)
-		for (const s of t.steps) stepById.set(s.node.id, {s, total: t.steps.length})
+	const stepById = new Map<
+		string,
+		{s: StepRef; total: number; threadLabel: string}
+	>()
+	for (const t of threads) {
+		const tid = t.thread.meta?.threadId ?? t.thread.id
+		const lbl = nameOf(tid, t.thread.name)
+		for (const s of t.steps)
+			stepById.set(s.node.id, {s, total: t.steps.length, threadLabel: lbl})
+	}
 	const totalSteps = threads.reduce((n, t) => n + t.steps.length, 0)
 	const largestFinal = threads.reduce(
 		(best, t) => {
+			const tid = t.thread.meta?.threadId ?? t.thread.id
 			const last = t.steps[t.steps.length - 1]
 			const end =
 				(last?.node.meta?.contextChars ?? 0) + (last?.node.meta?.chars ?? 0)
-			return end > best.end ? {thread: t.thread.name, end} : best
+			return end > best.end ? {thread: nameOf(tid, t.thread.name), end} : best
 		},
 		{thread: '', end: -1},
 	)
+
 	const panel = createInfoPanel({
 		headingId: 'context-panel-title',
 		heading: 'Step details',
 		contentFor: key => {
 			const found = stepById.get(key)
 			if (!found) return null
-			return withCostRow(
+			const base = withCostRow(
 				nodePanel(found.s.node, [
+					['thread', found.threadLabel],
 					['thread step', `#${found.s.stepIndexInThread} of ${found.total}`],
 					['turn', found.s.turn.name],
 				]),
 				found.s.node.meta?.tokensEst,
 				found.s.node.meta?.agent,
 			)
+			base.kicker = `${found.s.node.kind} · ${agentDisplayName(found.s.node.meta?.agent)}`
+			base.stats = [
+				[
+					'Context',
+					`${fmtCompact(found.s.node.meta?.contextChars ?? 0)} chars`,
+				],
+				['Step size', `${fmtCompact(found.s.node.meta?.chars ?? 0)} chars`],
+			]
+			return base
 		},
 		defaultContent: () => ({
+			kicker: `${fmtInt(threads.length)} observed threads`,
 			title: 'Context trajectories',
-			badges: [{text: `${fmtInt(threads.length)} threads`}],
+			stats: [
+				['Peak context', `${fmtCompact(largestFinal.end)} chars`],
+				['Observed steps', fmtInt(totalSteps)],
+			],
 			rows: [
-				['threads with steps', fmtInt(threads.length)],
-				['steps with context data', fmtInt(totalSteps)],
-				[
-					'largest context at a step',
-					`${fmtCompact(globalMax)} chars — the shared y max`,
-				],
-				[
-					'largest context at a thread end',
-					`${fmtCompact(largestFinal.end)} chars (${largestFinal.thread})`,
-				],
-				['interaction', 'hover or focus a point for that step'],
+				['shared y-axis max', `${fmtCompact(globalMax)} chars`],
+				['largest thread', largestFinal.thread],
+				['interaction', 'hover, focus, or click a point to pin'],
 			],
 		}),
 	})
+
 	const layout = el('div', {class: 'info-layout'}, grid, panel.root)
-	container.append(note, layout)
+	const foot = el(
+		'footer',
+		{class: 'plate-foot'},
+		`Reading key: Solid line = cumulative context chars at each step; faint bars underneath = each step's own size; vertical dashed rules = turn boundaries. Toggle "Fit each thread" to examine smaller threads in detail.`,
+	)
+	container.append(toolbar, layout, foot)
 
 	const hosts: HTMLElement[] = []
+	const redrawFns: (() => void)[] = []
 	const resizeScope = createResizeScope()
+
 	for (const t of threads) {
+		const tid = t.thread.meta?.threadId ?? t.thread.id
+		const threadTitle = nameOf(tid, t.thread.name)
 		const agent =
 			t.thread.meta?.agent ??
 			t.steps.find(s => s.node.meta?.agent !== 'user')?.node.meta?.agent
 		const last = t.steps[t.steps.length - 1]?.node.meta
+		const localMax =
+			d3.max(t.steps, s =>
+				Math.max(s.node.meta?.contextChars ?? 0, s.node.meta?.chars ?? 0),
+			) ?? 1
+
 		const card = el('figure', {class: 'multiple'})
 		const cap = el(
 			'figcaption',
 			{},
-			el('strong', {}, t.thread.name),
+			el('span', {class: 'multiple-title'}, threadTitle),
 			' ',
 			el(
 				'span',
 				{class: 'badge', style: `--badge:${agentColor(agent)}`},
-				agent ?? 'thread',
+				agentDisplayName(agent),
 			),
-			' ',
 			el(
 				'span',
-				{class: 'muted'},
-				`${fmtInt(t.steps.length)} steps · ${t.thread.children?.filter(c => c.kind === 'turn').length ?? 0} turns · context at end ${fmtInt((last?.contextChars ?? 0) + (last?.chars ?? 0))} chars`,
+				{class: 'multiple-meta'},
+				`${fmtInt(t.steps.length)} steps · ${t.thread.children?.filter(c => c.kind === 'turn').length ?? 0} turns · ends at ${fmtCompact((last?.contextChars ?? 0) + (last?.chars ?? 0))} chars`,
 			),
 		)
 		const host = el('div', {
 			class: 'chart-host',
 			role: 'group',
-			'aria-label': `Context growth for ${t.thread.name}; arrow keys move between steps`,
+			'aria-label': `Context growth for ${threadTitle}; arrow keys move between steps`,
 		})
 		card.append(cap, host)
 		grid.append(card)
 		hosts.push(host)
 
+		let lastW = 0
 		const draw = (width: number): void => {
+			lastW = width
 			host.replaceChildren()
-			const height = 220
-			const m = {top: 10, right: 12, bottom: 28, left: 56}
+			const height = 215
+			const m = {top: 14, right: 12, bottom: 28, left: 54}
+			const yDomainMax = sharedScale ? globalMax : localMax
 			const x = d3
 				.scaleLinear()
 				.domain([0, Math.max(1, t.steps.length - 1)])
 				.range([m.left, width - m.right])
 			const y = d3
 				.scaleLinear()
-				.domain([0, globalMax])
+				.domain([0, Math.max(1, yDomainMax)])
 				.nice()
 				.range([height - m.bottom, m.top])
 			const ctxAt = (s: StepRef) => s.node.meta?.contextChars ?? 0
@@ -150,9 +204,9 @@ export function renderContext(
 				.attr('role', 'img')
 				.attr(
 					'aria-label',
-					`Context size over ${t.steps.length} steps in ${t.thread.name}`,
+					`Context size over ${t.steps.length} steps in ${threadTitle}`,
 				)
-			svg.append('title').text(`Context growth — ${t.thread.name}`)
+			svg.append('title').text(`Context growth — ${threadTitle}`)
 
 			svg
 				.append('g')
@@ -161,7 +215,7 @@ export function renderContext(
 				.call(
 					d3
 						.axisBottom(x)
-						.ticks(Math.min(10, t.steps.length))
+						.ticks(Math.min(8, t.steps.length))
 						.tickFormat(d => `#${d}`),
 				)
 			svg
@@ -178,17 +232,16 @@ export function renderContext(
 				.append('text')
 				.attr('class', 'axis-label')
 				.attr('x', width - m.right)
-				.attr('y', height - 6)
+				.attr('y', height - 5)
 				.attr('text-anchor', 'end')
-				.text('step index →')
+				.text('step →')
 			svg
 				.append('text')
 				.attr('class', 'axis-label')
 				.attr('x', m.left)
-				.attr('y', m.top - 2)
-				.text('context chars')
+				.attr('y', m.top - 4)
+				.text(sharedScale ? 'context chars (shared)' : 'context chars (local)')
 
-			// Turn boundaries
 			const bounds: number[] = []
 			t.steps.forEach((s, i) => {
 				if (i > 0 && s.turn !== t.steps[i - 1]!.turn) bounds.push(i)
@@ -204,8 +257,7 @@ export function renderContext(
 				.attr('y1', m.top)
 				.attr('y2', height - m.bottom)
 
-			// Own-size bars
-			const barW = Math.max(1, (x(1) - x(0)) * 0.6)
+			const barW = Math.max(1, Math.min(6, (x(1) - x(0)) * 0.55))
 			svg
 				.append('g')
 				.selectAll('rect')
@@ -214,10 +266,13 @@ export function renderContext(
 				.attr('class', 'step-bar')
 				.attr('x', (_, i) => x(i) - barW / 2)
 				.attr('width', barW)
-				.attr('y', s => y(s.node.meta?.chars ?? 0))
-				.attr('height', s => y(0) - y(s.node.meta?.chars ?? 0))
+				.attr('y', s => y(Math.min(yDomainMax, s.node.meta?.chars ?? 0)))
+				.attr(
+					'height',
+					s => y(0) - y(Math.min(yDomainMax, s.node.meta?.chars ?? 0)),
+				)
 				.attr('fill', s => agentColor(s.node.meta?.agent))
-				.attr('fill-opacity', 0.35)
+				.attr('fill-opacity', 0.25)
 
 			const line = d3
 				.line<StepRef>()
@@ -229,14 +284,15 @@ export function renderContext(
 				.attr('class', 'ctx-line')
 				.attr('fill', 'none')
 				.attr('stroke', agentColor(agent))
-				.attr('stroke-width', 2)
+				.attr('stroke-width', 1.75)
 				.attr('d', line)
 
-			// Focusable points (radius grows with own size so hit targets are usable)
+			// Calm overplotting on dense threads (>45 steps) while keeping every step focusable/hoverable.
+			const dense = t.steps.length > 45
 			const r = d3
 				.scaleSqrt()
 				.domain([0, d3.max(t.steps, s => s.node.meta?.chars ?? 0) ?? 1])
-				.range([3, 9])
+				.range(dense ? [1.8, 5.2] : [2.8, 7.2])
 			svg
 				.append('g')
 				.selectAll<SVGCircleElement, StepRef>('circle')
@@ -247,8 +303,9 @@ export function renderContext(
 				.attr('cy', s => y(ctxAt(s)))
 				.attr('r', s => r(s.node.meta?.chars ?? 0))
 				.attr('fill', s => agentColor(s.node.meta?.agent))
+				.attr('fill-opacity', dense ? 0.65 : 0.88)
 				.attr('stroke', 'var(--bg)')
-				.attr('stroke-width', 1.5)
+				.attr('stroke-width', dense ? 0.75 : 1.25)
 				.attr('data-hit', 'step')
 				.attr('data-key', s => s.node.id)
 				.attr('tabindex', -1)
@@ -263,8 +320,22 @@ export function renderContext(
 			makeRoving(host, '[data-hit]')
 		}
 
+		redrawFns.push(() => {
+			if (lastW) draw(lastW)
+		})
 		resizeScope.observe(host, draw)
 	}
+
+	const setShared = (on: boolean) => {
+		if (sharedScale === on) return
+		sharedScale = on
+		btnShared.setAttribute('aria-pressed', String(on))
+		btnLocal.setAttribute('aria-pressed', String(!on))
+		for (const fn of redrawFns) fn()
+	}
+	btnShared.onclick = () => setShared(true)
+	btnLocal.onclick = () => setShared(false)
+
 	wireInfoPanel(hosts, panel)
 	const disposeRates = onRatesChange(container, panel.refresh)
 	return () => {

@@ -1,6 +1,14 @@
 import * as d3 from 'd3'
 import type {LoopNode, LoopsDataset, NodeKind} from '../types'
-import {agentColor, fmtCompact, fmtInt, nodeAriaLabel} from '../format'
+import {buildThreadNames, projectDisplayName} from '../data'
+import {
+	agentColor,
+	agentDisplayName,
+	fmtCompact,
+	fmtInt,
+	fmtPct,
+	nodeAriaLabel,
+} from '../format'
 import {createResizeScope, el, makeRoving, prefersReducedMotion} from '../util'
 import {onRatesChange} from '../cost'
 import {createInfoPanel, nodePanel, withCostRow, wireInfoPanel} from '../panel'
@@ -15,22 +23,38 @@ const CONTAINER_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>([
 ])
 
 /**
- * Horizontal icicle (d3.partition): depth runs left→right (project → thread →
- * turn → step → nested worker thread…), and each node's height is its size in
- * characters, so context/prompt bulk is visible in the encoding. Colour =
- * agent. Zoom back out with the Reset zoom control. Hovering or focusing any
- * cell swaps the section's info panel to that cell's details (default: the
- * project root), reviving the detail surface the pre-2026-09-03 tooltips gave
- * this section.
+ * Plate III — Horizontal icicle (d3.partition): depth runs left→right
+ * (project → thread → turn → step → nested worker threads), bar height encodes
+ * character volume, and colour encodes agent. Clicking any container zooms into
+ * it; a semantic breadcrumb trail navigates back up the ancestry.
  */
 export function renderHierarchy(
 	container: HTMLElement,
 	ds: LoopsDataset,
 ): () => void {
 	container.replaceChildren()
+	const threadNames = buildThreadNames(ds)
+	const projName = projectDisplayName(ds)
+
+	const displayNameOf = (n: LoopNode): string => {
+		if (n.kind === 'project') return projName
+		if (n.kind === 'thread' || n.kind === 'worker-thread') {
+			const tid = n.meta?.threadId ?? n.id
+			return threadNames.get(tid)?.full ?? n.name
+		}
+		return n.name
+	}
+	const shortNameOf = (n: LoopNode): string => {
+		if (n.kind === 'project') return projName
+		if (n.kind === 'thread' || n.kind === 'worker-thread') {
+			const tid = n.meta?.threadId ?? n.id
+			return threadNames.get(tid)?.short ?? n.name
+		}
+		return n.name.length > 26 ? `${n.name.slice(0, 25)}…` : n.name
+	}
+
 	const root = d3
 		.hierarchy<LoopNode>(ds.hierarchy)
-		// containers carry sums already; only count nodes that own text so nothing is double-counted
 		.sum(d =>
 			CONTAINER_KINDS.has(d.kind)
 				? 0
@@ -41,6 +65,8 @@ export function renderHierarchy(
 				(a.data.meta?.stepIndex ?? 0) - (b.data.meta?.stepIndex ?? 0) ||
 				(a.data.meta?.turnIndex ?? 0) - (b.data.meta?.turnIndex ?? 0),
 		)
+
+	const totalChars = root.value ?? 1
 
 	const agents = Array.from(
 		new Set(
@@ -61,39 +87,33 @@ export function renderHierarchy(
 				'span',
 				{class: 'legend-item', role: 'listitem'},
 				el('i', {class: 'swatch', style: `--c:${agentColor(a)}`}),
-				a,
+				agentDisplayName(a),
 			),
 		)
 
-	const controls = el('div', {class: 'toolbar'})
-	const resetBtn = el('button', {type: 'button', class: 'btn'}, 'Reset zoom')
-	const crumb = el(
-		'span',
-		{class: 'muted', 'aria-live': 'polite'},
-		'Showing: whole project',
-	)
-	controls.append(resetBtn, crumb)
+	const crumbNav = el('nav', {
+		class: 'breadcrumb',
+		'aria-label': 'Hierarchy zoom path',
+	})
+	const crumbList = el('ol', {})
+	crumbNav.append(crumbList)
+	const controls = el('div', {class: 'toolbar'}, legend, crumbNav)
 
-	const note = el(
-		'p',
-		{class: 'view-note'},
-		`Icicle of ${fmtInt(root.descendants().length)} nodes. Width steps = depth (project → thread → turn → step; worker threads nest under the turn that dispatched them). `,
-		`Height = characters of text/JSON. Colour = agent. Every cell is focusable; its aria-label carries the name and size, and hovering or focusing it swaps the info panel to that cell.`,
-	)
 	const host = el('div', {
 		class: 'chart-host',
 		role: 'group',
-		'aria-label': 'Turn hierarchy icicle; arrow keys move between cells',
+		'aria-label':
+			'Turn hierarchy icicle; arrow keys move between cells, Enter zooms in',
 	})
 
-	// Info panel, modelled on the Sankey view's: project root by default, a
-	// hovered/focused cell's details otherwise. Content is the former tooltip's
-	// nodeTip for this section — node fields plus depth, descendants and path,
-	// with the assumed-rate cost row directly after the size row.
 	const byId = new Map<string, HNode>()
 	root.each(d => byId.set(d.data.id, d as HNode))
+
 	const cellContent = (n: HNode) => {
+		const chars = n.data.meta?.chars ?? n.value ?? 0
+		const share = fmtPct(n.value ?? chars, totalChars)
 		const extra: [string, string][] = [
+			['share of project', share],
 			['depth', String(n.depth)],
 			['descendants', fmtInt(n.descendants().length - 1)],
 			[
@@ -101,16 +121,24 @@ export function renderHierarchy(
 				n
 					.ancestors()
 					.reverse()
-					.map(a => a.data.name)
+					.map(a => displayNameOf(a.data))
 					.join(' › '),
 			],
 		]
-		return withCostRow(
+		const base = withCostRow(
 			nodePanel(n.data, extra),
 			n.data.meta?.tokensEst,
 			n.data.meta?.agent,
 		)
+		base.title = displayNameOf(n.data)
+		base.kicker = `${n.data.kind} · ${agentDisplayName(n.data.meta?.agent)}`
+		base.stats = [
+			['Volume', `${fmtCompact(chars)} chars`],
+			['Project share', share],
+		]
+		return base
 	}
+
 	const panel = createInfoPanel({
 		headingId: 'hierarchy-panel-title',
 		heading: 'Cell details',
@@ -124,18 +152,44 @@ export function renderHierarchy(
 		},
 	})
 	const layout = el('div', {class: 'info-layout'}, host, panel.root)
-	container.append(note, legend, controls, layout)
-	wireInfoPanel([host], panel)
+	const foot = el(
+		'footer',
+		{class: 'plate-foot'},
+		`Reading key: ${fmtInt(root.descendants().length)} observed nodes. Container columns (project, thread, turn) use soft fills; leaf steps use denser fills. Click any container cell to zoom in, or use the breadcrumb trail above to step back out.`,
+	)
+	container.append(controls, layout, foot)
+	wireInfoPanel([host], panel, undefined, {pinOnClick: false})
 
 	let focusNode: HNode | null = null
 	let lastWidth = 0
+
+	const updateBreadcrumbs = (zoomRoot: HNode, laid: HNode) => {
+		crumbList.replaceChildren()
+		const ancestors = zoomRoot.ancestors().reverse()
+		ancestors.forEach((anc, idx) => {
+			const isLast = idx === ancestors.length - 1
+			const label = anc === laid ? projName : shortNameOf(anc.data)
+			const btn = el(
+				'button',
+				{
+					type: 'button',
+					...(isLast ? {'aria-current': 'page'} : {}),
+				},
+				label,
+			)
+			if (!isLast) {
+				btn.addEventListener('click', () => zoomTo(anc === laid ? null : anc))
+			}
+			crumbList.append(el('li', {}, btn))
+		})
+	}
 
 	const draw = (width: number): void => {
 		lastWidth = width
 		host.replaceChildren()
 		const maxDepth = root.height
-		const colW = Math.max(120, Math.min(220, (width - 8) / (maxDepth + 1)))
-		const height = Math.max(520, Math.min(1400, root.leaves().length * 5))
+		const colW = Math.max(125, Math.min(220, (width - 8) / (maxDepth + 1)))
+		const height = Math.max(520, Math.min(960, root.leaves().length * 3.8))
 		const partition = d3
 			.partition<LoopNode>()
 			.size([height, colW * (maxDepth + 1)])
@@ -143,7 +197,6 @@ export function renderHierarchy(
 		const laid = partition(root as d3.HierarchyNode<LoopNode>)
 		const zoomRoot = focusNode ?? laid
 
-		// Zoom: rescale y (size) to the focused node's extent and x (depth) so focus sits at column 0
 		const y = d3
 			.scaleLinear()
 			.domain([zoomRoot.x0, zoomRoot.x1])
@@ -171,6 +224,16 @@ export function renderHierarchy(
 					d.y0 >= xShift &&
 					d.y0 - xShift < width,
 			)
+
+		const fillOpacity = (d: HNode): number =>
+			CONTAINER_KINDS.has(d.data.kind)
+				? 0.24
+				: d.data.kind === 'reasoning'
+					? 0.55
+					: d.data.kind === 'tool-result'
+						? 0.78
+						: 0.9
+
 		const cell = svg
 			.append('g')
 			.selectAll<SVGGElement, HNode>('g')
@@ -186,6 +249,18 @@ export function renderHierarchy(
 			.attr('tabindex', -1)
 			.attr('role', 'button')
 			.attr('aria-label', d => nodeAriaLabel(d.data))
+			.on('click', (_, d) => {
+				if (d === zoomRoot && d.parent) zoomTo(d.parent as HNode)
+				else if (d.children?.length) zoomTo(d)
+			})
+			.on('keydown', (ev: KeyboardEvent, d) => {
+				if (ev.key === 'Enter' || ev.key === ' ') {
+					ev.preventDefault()
+					if (d === zoomRoot && d.parent) zoomTo(d.parent as HNode)
+					else if (d.children?.length) zoomTo(d)
+				}
+			})
+
 		cell
 			.append('rect')
 			.attr('width', d => Math.max(1, d.y1 - d.y0 - 1))
@@ -196,64 +271,47 @@ export function renderHierarchy(
 				),
 			)
 			.attr('fill', d => agentColor(d.data.meta?.agent))
-			.attr('fill-opacity', d =>
-				CONTAINER_KINDS.has(d.data.kind)
-					? 0.35
-					: d.data.kind === 'reasoning'
-						? 0.6
-						: d.data.kind === 'tool-result'
-							? 0.75
-							: 0.9,
-			)
+			.attr('fill-opacity', fillOpacity)
 			.attr('rx', 2)
+
+		const isInverted = (d: HNode): boolean => fillOpacity(d) >= 0.75
+
 		const label = cell
 			.append('text')
 			.attr('x', 6)
 			.attr('y', 14)
-			.attr('class', 'ic-label')
+			.attr('class', d => `ic-label${isInverted(d) ? ' is-inv' : ''}`)
+		label.append('tspan').text(d => shortNameOf(d.data))
 		label
 			.append('tspan')
-			.text(d =>
-				d.data.name.length > 28 ? `${d.data.name.slice(0, 27)}…` : d.data.name,
-			)
-		label
-			.append('tspan')
-			.attr('class', 'ic-sub')
+			.attr('class', d => `ic-sub${isInverted(d) ? ' is-inv' : ''}`)
 			.attr('x', 6)
-			.attr('dy', 14)
-			.text(
-				d =>
-					`${fmtCompact(d.data.meta?.chars ?? d.value ?? 0)} chars${d.data.meta?.contextChars !== undefined ? ` · ctx ${fmtCompact(d.data.meta.contextChars)}` : ''}`,
-			)
-		// Hide labels on cells too small to hold them (keeps the SVG legible; the aria-label still carries everything)
+			.attr('dy', 13)
+			.text(d => {
+				const chars = d.data.meta?.chars ?? d.value ?? 0
+				return `${fmtCompact(chars)} · ${fmtPct(d.value ?? chars, totalChars)}`
+			})
+
 		label.style('display', d =>
 			y(Math.min(d.x1, zoomRoot.x1)) - y(Math.max(d.x0, zoomRoot.x0)) < 30 ||
-			d.y1 - d.y0 < 70
+			d.y1 - d.y0 < 78
 				? 'none'
 				: null,
 		)
 
 		host.append(svg.node()!)
 		makeRoving(host, '[data-hit]')
-		crumb.textContent = `Showing: ${
-			zoomRoot === laid
-				? 'whole project'
-				: zoomRoot
-						.ancestors()
-						.reverse()
-						.map(a => a.data.name)
-						.join(' › ')
-		}`
+		updateBreadcrumbs(zoomRoot, laid)
 	}
+
 	const zoomTo = (n: HNode | null) => {
 		focusNode = n && n.children ? n : n ? (n.parent as HNode | null) : null
 		if (!prefersReducedMotion()) host.classList.add('is-fading')
 		requestAnimationFrame(() => {
-			draw(lastWidth)
+			if (lastWidth) draw(lastWidth)
 			host.classList.remove('is-fading')
 		})
 	}
-	resetBtn.addEventListener('click', () => zoomTo(null))
 
 	const resizeScope = createResizeScope()
 	resizeScope.observe(container, draw)
