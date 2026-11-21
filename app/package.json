@@ -8,14 +8,17 @@
     "fixture": "node scripts/make-fixture.mjs",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort"
+    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",
     "@types/d3-sankey": "^0.12.5",
     "@types/node": "^20.19.43",
+    "jsdom": "^29.1.1",
     "typescript": "^5.9.3",
-    "vite": "^6.4.3"
+    "vite": "^6.4.3",
+    "vitest": "^4.1.12"
   },
   "dependencies": {
     "d3": "^7.9.0",

@@ -1,6 +1,6 @@
 import * as d3 from 'd3';
 import type { LoopNode, LoopsDataset } from '../types';
-import { collectThreads } from '../data';
+import { collectThreads, turnKey } from '../data';
 import { agentColor, fmtInt, fmtTime } from '../format';
 import { costOf, fmtCost, fmtRate, onRatesChange, rateFor } from '../cost';
 import { el } from '../util';
@@ -22,7 +22,7 @@ export function renderSummary(container: HTMLElement, ds: LoopsDataset): void {
     for (const turn of t.thread.children ?? []) {
       if (turn.kind !== 'turn') continue;
       const ti = turn.meta?.turnIndex ?? (t.thread.children ?? []).indexOf(turn);
-      turnNodes.set(`${tid}#${ti}`, { turn, prompt: turn.children?.find((c) => c.kind === 'user-message') });
+      turnNodes.set(turnKey(tid, ti), { turn, prompt: turn.children?.find((c) => c.kind === 'user-message') });
     }
   }
 
@@ -82,7 +82,7 @@ export function renderSummary(container: HTMLElement, ds: LoopsDataset): void {
       const series = t.steps
         .filter((s) => s.turn === turn && s.node.meta?.contextChars !== undefined)
         .map((s) => s.node.meta?.contextChars ?? 0);
-      turnCtx.set(`${tid}#${ti}`, series);
+      turnCtx.set(turnKey(tid, ti), series);
     }
   }
 
@@ -95,7 +95,7 @@ export function renderSummary(container: HTMLElement, ds: LoopsDataset): void {
     headingId: 'summary-panel-title',
     heading: 'Details',
     contentFor: (key) => {
-      const t = turnRows.find((x) => `${x.threadId}#${x.turnIndex}` === key);
+      const t = turnRows.find((x) => turnKey(x.threadId, x.turnIndex) === key);
       if (!t) return null;
       const found = turnNodes.get(key);
       const rows: [string, string][] = [
@@ -134,13 +134,13 @@ export function renderSummary(container: HTMLElement, ds: LoopsDataset): void {
       el('span', {}, el('i', { class: 'swatch', style: `--c:${agentColor(t.agent)}` }), t.agent),
       fmtTime(t.startedAt), fmtInt(t.steps), fmtInt(t.toolCalls), fmtInt(t.chars), fmtInt(t.tokensEst), fmtCost(costOf(t.tokensEst, t.agent)),
       bar(t.contextCharsAtEnd, maxCtx, agentColor(t.agent)),
-      sparkline(turnCtx.get(`${t.threadId}#${t.turnIndex}`) ?? [], agentColor(t.agent)),
+      sparkline(turnCtx.get(turnKey(t.threadId, t.turnIndex)) ?? [], agentColor(t.agent)),
       fmtInt(t.userPromptChars),
     ]),
     (tr, i) => {
       const t = turnRows[i]!;
       tr.setAttribute('data-hit', 'turn');
-      tr.setAttribute('data-key', `${t.threadId}#${t.turnIndex}`);
+      tr.setAttribute('data-key', turnKey(t.threadId, t.turnIndex));
       tr.setAttribute('tabindex', '0');
     },
   );
@@ -149,7 +149,7 @@ export function renderSummary(container: HTMLElement, ds: LoopsDataset): void {
   wireInfoPanel([tbl], panel);
 
   // Memory facts, if the pipeline attached them (hierarchy.meta.memory is an extension beyond SCHEMA.md; rendered defensively).
-  const mem = ds.hierarchy.meta?.memory;
+  const mem = (ds.hierarchy.meta as { memory?: unknown } | undefined)?.memory;
   if (Array.isArray(mem) && mem.length) {
     container.append(el('h3', {}, `Memory facts attached to the project (${fmtInt(mem.length)})`));
     const ul = el('ul', { class: 'facts' });

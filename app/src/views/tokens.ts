@@ -1,6 +1,6 @@
 import * as d3 from 'd3';
 import type { LoopNode, LoopsDataset, TurnStat } from '../types';
-import { collectThreads, isStepKind } from '../data';
+import { collectThreads, isStepKind, turnKey } from '../data';
 import { agentColor, fmtCompact, fmtInt, fmtTime } from '../format';
 import { costOf, fmtCost, fmtRate, onRatesChange, rateFor } from '../cost';
 import { el, makeRoving, onResize } from '../util';
@@ -33,7 +33,10 @@ let metric: Metric = 'tokens';
 let mode: 'lines' | 'multiples' = 'lines';
 let focusAfter: 'metric' | 'mode' | null = null;
 
-const cellKey = (threadId: string, turnIndex: number, agent: string): string => `${threadId}#${turnIndex}|${agent}`;
+/** Disposers for this render's ResizeObservers — disconnected before the next render re-creates the hosts. */
+let disposeCharts: (() => void)[] = [];
+
+const cellKey = (threadId: string, turnIndex: number, agent: string): string => `${turnKey(threadId, turnIndex)}|${agent}`;
 
 /** Sum tokensEst over observed step nodes by turn × agent (containers excluded — they carry sums). */
 function deriveTurnAgentTokens(root: LoopNode): Map<string, number> {
@@ -60,7 +63,7 @@ function threadDirectory(ds: LoopsDataset): { names: Map<string, string>; prompt
       if (turn.kind !== 'turn') return;
       const ti = turn.meta?.turnIndex ?? i;
       const prompt = (turn.children ?? []).find((c) => c.kind === 'user-message');
-      if (prompt) prompts.set(`${tid}#${ti}`, prompt);
+      if (prompt) prompts.set(turnKey(tid, ti), prompt);
     });
   }
   return { names, prompts };
@@ -94,6 +97,8 @@ function legendGradient(stops = 8): string {
 }
 
 export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
+  for (const d of disposeCharts) d(); // this render re-creates the chart hosts
+  disposeCharts = [];
   container.replaceChildren();
 
   const turns: TurnStat[] = [...ds.stats.turns].sort((a, b) =>
@@ -105,13 +110,13 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
   const agents = agentColumns(ds);
   const valueOf = (t: TurnStat, agent: string): number => cells.get(cellKey(t.threadId, t.turnIndex, agent)) ?? 0;
   const val = (tokens: number, agent: string): number => (metric === 'cost' ? costOf(tokens, agent) : tokens);
-  const fmtVal = (n: number): string => (metric === 'cost' ? fmtCost(n) : `≈${fmtInt(n)}`);
-  const fmtValCompact = (n: number): string => (metric === 'cost' ? fmtCost(n) : `≈${fmtCompact(n)}`);
+  const fmtVal = (n: number): string => (metric === 'cost' ? `~${fmtCost(n)}` : `≈${fmtInt(n)}`);
+  const fmtValCompact = (n: number): string => (metric === 'cost' ? `~${fmtCost(n)}` : `≈${fmtCompact(n)}`);
   const unitLabel = metric === 'cost' ? 'cost (est., assumed rate)' : 'tokens (est.)';
   const turnName = (t: TurnStat): string => `${names.get(t.threadId) ?? t.threadId} · turn ${t.turnIndex + 1}`;
 
   function excerptFor(t: TurnStat): PanelContent['text'] {
-    const p = prompts.get(`${t.threadId}#${t.turnIndex}`);
+    const p = prompts.get(turnKey(t.threadId, t.turnIndex));
     const body = p?.meta?.excerpt ?? '';
     return body ? { body, mono: false, label: 'User prompt that opened this turn (excerpt)' } : undefined;
   }
@@ -200,7 +205,7 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
       ['all agents', `+${fmtVal(totals[i] ?? 0)}${metric === 'cost' ? '' : ' (est.)'} · cumulative ${fmtVal(d3.sum(series, (s) => s.cum[i] ?? 0))}`],
       ['started', fmtTime(t.startedAt)],
     ];
-    if (metric === 'cost') rows.unshift(['note', `cost = est. tokens × ${fmtRate(rateFor(t.agent))} (assumed; not provider data)`]);
+    if (metric === 'cost') rows.unshift(['note', `cost = est. tokens × assumed rates, applied per agent class — headline rate ${fmtRate(rateFor(t.agent))} is the turn's dominant agent; not provider data`]);
     return { title: `${turnName(t)} (#${i + 1} globally)`, badges: [{ text: 'turn' }], rows, text: excerptFor(t) };
   }
 
@@ -285,7 +290,7 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
   };
   drawHeatLegend();
 
-  onResize(heatHost, drawHeat);
+  disposeCharts.push(onResize(heatHost, drawHeat));
 
   // ── 2. Cumulative trend: overlaid lines | per-agent multiples ───────────
   // Per agent: delta per turn slot + running cumulative (flat where the agent did nothing).
@@ -498,7 +503,7 @@ export function renderTokens(container: HTMLElement, ds: LoopsDataset): void {
     makeRoving(lineHost, '[data-hit]');
   };
 
-  onResize(lineHost, drawLine);
+  disposeCharts.push(onResize(lineHost, drawLine));
 
   // Honest-labelling footnote (also the schema gap note: stats.turns carries no thread display name).
   col.append(el('p', { class: 'view-note muted small' },

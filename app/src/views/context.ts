@@ -44,7 +44,7 @@ export function renderContext(container: HTMLElement, ds: LoopsDataset): void {
       const found = stepById.get(key);
       if (!found) return null;
       return withCostRow(
-        nodePanel(found.s.node, [['thread step', `#${found.s.globalStepIndex} of ${found.total}`], ['turn', found.s.turn.name]]),
+        nodePanel(found.s.node, [['thread step', `#${found.s.stepIndexInThread} of ${found.total}`], ['turn', found.s.turn.name]]),
         found.s.node.meta?.tokensEst, found.s.node.meta?.agent,
       );
     },

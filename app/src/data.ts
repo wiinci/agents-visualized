@@ -51,7 +51,13 @@ export async function loadDataset(): Promise<LoadedDataset> {
 // ---------------------------------------------------------------------------
 // Derived indexes shared by several views (computed once, from observed data).
 
-export interface StepRef { node: LoopNode; thread: LoopNode; turn: LoopNode; globalStepIndex: number }
+export interface StepRef { node: LoopNode; thread: LoopNode; turn: LoopNode; stepIndexInThread: number }
+
+/**
+ * The app-wide turn key convention: `threadId#turnIndex` (turnIndex is
+ * 0-based, as stored). One builder so the string is never reassembled by hand.
+ */
+export const turnKey = (threadId: string, turnIndex: number): string => `${threadId}#${turnIndex}`;
 
 const STEP_KINDS: ReadonlySet<NodeKind> = new Set<NodeKind>(['user-message', 'reasoning', 'text', 'tool-call', 'tool-result', 'task', 'wake']);
 
@@ -69,7 +75,7 @@ export function collectThreads(root: LoopNode): Map<string, { thread: LoopNode; 
       for (const step of turn.children ?? []) {
         // real data nests worker threads directly under the dispatching turn
         if (step.kind === 'worker-thread' || step.kind === 'thread') { visitThread(step); continue; }
-        if (isStepKind(step.kind)) entry.steps.push({ node: step, thread, turn, globalStepIndex: entry.steps.length });
+        if (isStepKind(step.kind)) entry.steps.push({ node: step, thread, turn, stepIndexInThread: entry.steps.length });
         // nested worker threads under a dispatching task
         for (const c of step.children ?? []) if (c.kind === 'worker-thread' || c.kind === 'thread') visitThread(c);
       }
