@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import type { LoopNode, NodeKind } from './types';
+import { canonicalStatus, type StatusVocab } from './colors';
 
 export const fmtInt = d3.format(',d');
 export const fmtCompact = d3.format('.3~s');
@@ -14,14 +15,18 @@ export const fmtTime = (iso: string | undefined): string => {
 /** Colour vocabulary lives in `./colors` behind a domain-checked union; format.ts keeps text/glyph concerns only. */
 export { agentColor, stageColor, statusColor } from './colors';
 
+const STATUS_GLYPHS: Readonly<Record<StatusVocab, string>> = {
+  completed: '✓',
+  in_progress: '▶',
+  blocked: '⏸',
+  failed: '✗',
+  todo: '○',
+};
+
+/** Status glyph for any dataset spelling — same synonym table as statusColor, so glyph and colour agree. */
 export function statusGlyph(status: string | undefined): string {
-  switch ((status ?? '').toLowerCase()) {
-    case 'completed': case 'done': case 'success': return '✓';
-    case 'in_progress': case 'running': case 'active': return '▶';
-    case 'blocked': case 'waiting': case 'needs_input': return '⏸';
-    case 'failed': case 'error': case 'cancelled': return '✗';
-    default: return '○';
-  }
+  const canonical = canonicalStatus(status);
+  return canonical ? STATUS_GLYPHS[canonical] : '○';
 }
 
 export const KIND_LABEL: Record<NodeKind, string> = {
@@ -48,8 +53,4 @@ export function nodeAriaLabel(node: LoopNode): string {
   if (m?.chars !== undefined) bits.push(`${fmtInt(m.chars)} characters`);
   if (m?.status) bits.push(`status ${m.status}`);
   return bits.join(', ');
-}
-
-export function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 }

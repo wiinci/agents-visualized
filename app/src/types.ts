@@ -15,13 +15,14 @@ export interface LoopNodeMeta {
   tokensEst: number;
   contextChars?: number;
   contextTokensEst?: number;
+  /** End-of-turn context size — carried by turn/task nodes; step nodes use contextChars. */
+  contextCharsAtEnd?: number;
   promptChars?: number;
   agent: string;
   threadId?: string; turnIndex?: number; stepIndex?: number; messageId?: string;
   excerpt?: string;
   fullText?: string;
   truncated?: boolean;
-  [k: string]: unknown;
 }
 
 export interface LoopNode {
