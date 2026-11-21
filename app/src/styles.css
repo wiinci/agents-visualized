@@ -148,9 +148,9 @@ svg path[tabindex]:focus, svg path[tabindex]:focus-visible { outline: none; stro
 .sankey-host:active { cursor: grabbing; }
 .sankey-svg { touch-action: none; }
 .sankey-link { stroke: var(--sankey-line); stroke-linecap: round; pointer-events: none; transition: stroke 120ms, opacity 120ms; }
-/* Invisible wider-stroke twins of the hairlines carry hover/focus (curved-stroke bbox
-   centres are off-path; QA finding). Transparent at rest; a translucent band on focus. */
-.sankey-linkhit { stroke: transparent; fill: none; pointer-events: stroke; cursor: pointer; }
+/* Invisible wider-stroke twins of the hairlines: keyboard roving-focus targets and the
+   geometry the proximity index samples. Transparent at rest; a translucent band on focus. */
+.sankey-linkhit { stroke: transparent; fill: none; pointer-events: none; cursor: pointer; }
 svg path.sankey-linkhit:focus, svg path.sankey-linkhit:focus-visible { stroke: var(--focus); stroke-opacity: .3; stroke-width: 8px; }
 .sankey-link.is-back { stroke-dasharray: 4 3; opacity: .55; } /* return edges recede until highlighted */
 .sankey-header { font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; fill: var(--fg-muted); pointer-events: none; }

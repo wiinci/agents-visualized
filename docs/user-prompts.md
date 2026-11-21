@@ -5,7 +5,7 @@ Every instruction the user (Mardav Wala) gave in this project's dialog, extracte
 - **Typed prompts** are the user's own words.
 - **Decision checkpoints** are choices the user made in the interface (mode switches, approval cards, question cards); the platform records these as system-written summaries, quoted as stored.
 
-There are 41 typed prompts and 9 recorded decision checkpoints.
+There are 42 typed prompts and 9 recorded decision checkpoints.
 
 ## Typed prompts
 
@@ -181,6 +181,10 @@ There are 41 typed prompts and 9 recorded decision checkpoints.
 ### 41 · 2026-11-21 01:59 UTC
 
 > cool implement this now and then update the wiinci/agents-visualized repo as well with the new findings - remember to use discriminated unions for types a such to keep these validations in type itself. be brave
+
+### 42 · 2026-11-21 02:25 UTC
+
+> For the sankey diagram create a delaunay-based transparent overlay so the cursor always highlights the closest node(s) and link(s) versus having the pointer control govern the highlights as it does now. The current setup requires the user to be precise with the pointer device and we want that experience to be better. Check the d3-delaunay documentation and perhaps observablehq.com or other relevant articles to idiomatically implement this feature. Do the previous steps - open a PR, DCO sign the commits, update wiki. Also to be a little more meta continue updating the statistics in our agent loops visualized document itself count everything we have done in this and earlier sessions (do not duplicate whats already accounted for)
 
 ## Decision checkpoints
 
