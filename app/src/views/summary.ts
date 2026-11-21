@@ -69,6 +69,23 @@ export function renderSummary(container: HTMLElement, ds: LoopsDataset): void {
   const maxCtx = d3.max(turns, (t) => t.contextCharsAtEnd) ?? 1;
   const turnRows = [...turns].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 
+  // Per-turn context trajectory: per-step meta.contextChars for that turn's
+  // steps, via the collect traversal (thread → turn → step). Keyed like the
+  // info panel (`threadId#turnIndex`). A turn with no step-level context data
+  // has no series — the sparkline cell renders an em dash, never an empty box.
+  const turnCtx = new Map<string, number[]>();
+  for (const [tid, t] of collectThreads(ds.hierarchy)) {
+    const kids = t.thread.children ?? [];
+    for (const turn of kids) {
+      if (turn.kind !== 'turn') continue;
+      const ti = turn.meta?.turnIndex ?? kids.indexOf(turn);
+      const series = t.steps
+        .filter((s) => s.turn === turn && s.node.meta?.contextChars !== undefined)
+        .map((s) => s.node.meta?.contextChars ?? 0);
+      turnCtx.set(`${tid}#${ti}`, series);
+    }
+  }
+
   // Info panel, modelled on the Sankey view's: overall totals by default, a
   // hovered/focused turn row's details otherwise — the content the former
   // tooltips composed for this section (turn totals plus the opening user
@@ -111,12 +128,14 @@ export function renderSummary(container: HTMLElement, ds: LoopsDataset): void {
     }),
   });
   const tbl = table(
-    ['turn', 'agent', 'started', 'steps', 'tool calls', 'chars', 'tokens (est.)', 'cost (est.)', 'context at end', 'user prompt chars'],
+    ['turn', 'agent', 'started', 'steps', 'tool calls', 'chars', 'tokens (est.)', 'cost (est.)', 'context at end', 'context over steps', 'user prompt chars'],
     turnRows.map((t) => [
       `${t.threadId} #${t.turnIndex + 1}`,
       el('span', {}, el('i', { class: 'swatch', style: `--c:${agentColor(t.agent)}` }), t.agent),
       fmtTime(t.startedAt), fmtInt(t.steps), fmtInt(t.toolCalls), fmtInt(t.chars), fmtInt(t.tokensEst), fmtCost(costOf(t.tokensEst, t.agent)),
-      bar(t.contextCharsAtEnd, maxCtx, agentColor(t.agent)), fmtInt(t.userPromptChars),
+      bar(t.contextCharsAtEnd, maxCtx, agentColor(t.agent)),
+      sparkline(turnCtx.get(`${t.threadId}#${t.turnIndex}`) ?? [], agentColor(t.agent)),
+      fmtInt(t.userPromptChars),
     ]),
     (tr, i) => {
       const t = turnRows[i]!;
@@ -144,6 +163,39 @@ export function renderSummary(container: HTMLElement, ds: LoopsDataset): void {
   }
 
   onRatesChange(container, () => renderSummary(container, ds));
+}
+
+/**
+ * Sparkline of context size over a turn's steps (~120×22px, single path in
+ * the row agent's colour, y from 0 so rows are comparable). Empty or missing
+ * series → em dash, never an empty box. Min/max stay unannotated; the
+ * adjacent numeric cell and the info panel carry the values.
+ */
+function sparkline(series: number[], color: string): SVGSVGElement | string {
+  if (!series.length) return '—';
+  const w = 120;
+  const h = 22;
+  const pad = 2;
+  const last = series[series.length - 1] ?? 0;
+  const y = d3.scaleLinear().domain([0, d3.max(series) ?? 1]).range([h - pad, pad]);
+  const x = (i: number): number => (series.length > 1 ? pad + (i / (series.length - 1)) * (w - 2 * pad) : w / 2);
+  const path = d3.line<number>().x((_, i) => x(i)).y((v) => y(v))(series) ?? '';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  svg.setAttribute('width', String(w));
+  svg.setAttribute('height', String(h));
+  svg.setAttribute('class', 'sparkline');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', `context over ${series.length} steps, ending at ${fmtInt(last)} chars`);
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  p.setAttribute('d', path);
+  p.setAttribute('fill', 'none');
+  p.setAttribute('stroke', color);
+  p.setAttribute('stroke-width', '1.5');
+  p.setAttribute('stroke-linejoin', 'round');
+  p.setAttribute('stroke-linecap', 'round');
+  svg.append(p);
+  return svg;
 }
 
 function bar(value: number, max: number, color: string): HTMLElement {

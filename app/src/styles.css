@@ -116,8 +116,8 @@ svg path[tabindex]:focus, svg path[tabindex]:focus-visible { outline: none; stro
 .multiple .chart-host { overflow: visible; }
 
 /* KPI strip */
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75em; margin-block: .5em 1em; }
-.kpi { border: 1px solid var(--border); border-radius: var(--radius); padding: .75em; background: var(--bg-2); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75em 1.5em; margin-block: .5em 1em; border-top: 1px solid var(--border); padding-top: .75em; }
+/* KPI strip de-boxed: whitespace separates values; the hairline above is the only rule (Tufte: unwarranted ink). */
 .kpi-value { font-size: var(--step-1); font-weight: 700; font-variant-numeric: tabular-nums; }
 .kpi-label { color: var(--fg-muted); font-size: var(--step--1); }
 
@@ -266,6 +266,8 @@ svg path.sankey-linkhit:focus, svg path.sankey-linkhit:focus-visible { stroke: v
 .tok-legend { display: flex; align-items: baseline; gap: .5em; flex-wrap: wrap; }
 .tok-legend-bar { display: inline-block; inline-size: 180px; block-size: 12px; border-radius: 3px; border: 1px solid var(--border); align-self: center; }
 .tok-legend-tick { font-family: var(--mono); }
+/* Printed cell values (self-revealing data); aria-hidden, no pointer events. */
+.tok-cellval { font-family: var(--mono); font-size: 10.5px; pointer-events: none; }
 
 /* ── Rates control (cost.ts): header button + popover form ───────────── */
 .rates-btn { font: inherit; padding: .35em .6em; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-2); color: var(--fg); cursor: pointer; }

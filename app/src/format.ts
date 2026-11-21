@@ -11,28 +11,9 @@ export const fmtTime = (iso: string | undefined): string => {
   return Number.isNaN(d.getTime()) ? iso : d.toISOString().replace('T', ' ').replace(/\.\d+Z$/, 'Z');
 };
 
-/** Agent colour: user / orchestrator fixed, worker:* from a categorical ramp. Colours chosen for ≥3:1 against both page backgrounds. */
-const workerScale = d3.scaleOrdinal<string, string>().range(['#0f8b8d', '#c2410c', '#7c3aed', '#b45309', '#0e7490', '#be185d', '#4d7c0f']);
-export function agentColor(agent: string | undefined): string {
-  if (!agent) return '#6b7280';
-  if (agent === 'user') return '#2563eb';
-  if (agent === 'orchestrator') return '#4f46e5';
-  if (agent.startsWith('worker:')) return workerScale(agent);
-  return '#6b7280';
-}
+/** Colour vocabulary lives in `./colors` behind a domain-checked union; format.ts keeps text/glyph concerns only. */
+export { agentColor, stageColor, statusColor } from './colors';
 
-export function statusColor(status: string | undefined): string {
-  switch ((status ?? '').toLowerCase()) {
-    case 'completed': case 'done': case 'success': return '#15803d';
-    case 'in_progress': case 'running': case 'active': return '#2563eb';
-    case 'blocked': case 'waiting': case 'needs_input': return '#b45309';
-    case 'failed': case 'error': case 'cancelled': return '#b91c1c';
-    case 'todo': case 'pending': return '#6b7280';
-    default: return '#6b7280';
-  }
-}
-
-/** Text-based status marker so colour is never the only indicator. */
 export function statusGlyph(status: string | undefined): string {
   switch ((status ?? '').toLowerCase()) {
     case 'completed': case 'done': case 'success': return '✓';
@@ -60,21 +41,6 @@ export function stageLabel(stage: string): string {
   return stage.startsWith('tool:') ? `tool: ${stage.slice(5)}` : stage;
 }
 
-export function stageColor(stage: string): string {
-  if (stage.startsWith('tool:')) return '#0f766e';
-  switch (stage) {
-    case 'user': return '#2563eb';
-    case 'reason': return '#4f46e5';
-    case 'observe': return '#0369a1';
-    case 'respond': return '#15803d';
-    case 'delegate': return '#c2410c';
-    case 'worker': return '#7c3aed';
-    case 'wake': return '#b45309';
-    default: return '#6b7280';
-  }
-}
-
-/** Short accessible name for an SVG node (the primary textual description of SVG marks). */
 export function nodeAriaLabel(node: LoopNode): string {
   const m = node.meta;
   const bits = [node.name, KIND_LABEL[node.kind] ?? node.kind];
