@@ -6,6 +6,8 @@ A D3 + TypeScript visualization of how Obvious agents actually run: turns, tool 
 
 See [How this report is built](docs/explainer.md) for a conference-length spec of the extraction → schema → D3 pipeline.
 
+**Print edition:** [docs/agents-visualized-report.pdf](docs/agents-visualized-report.pdf) — the wiki, typeset as one professional report (cover, numbered sections, figures, print CSS).
+
 Two pieces, one contract:
 
 | Path | What it is |
