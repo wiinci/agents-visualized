@@ -186,6 +186,10 @@ There are 42 typed prompts and 9 recorded decision checkpoints.
 
 > For the sankey diagram create a delaunay-based transparent overlay so the cursor always highlights the closest node(s) and link(s) versus having the pointer control govern the highlights as it does now. The current setup requires the user to be precise with the pointer device and we want that experience to be better. Check the d3-delaunay documentation and perhaps observablehq.com or other relevant articles to idiomatically implement this feature. Do the previous steps - open a PR, DCO sign the commits, update wiki. Also to be a little more meta continue updating the statistics in our agent loops visualized document itself count everything we have done in this and earlier sessions (do not duplicate whats already accounted for)
 
+### 45 · 2026-11-21 03:29 UTC
+
+> where's our code smells task/conversation? are you working on that?
+
 ## Decision checkpoints
 
 ### D1 · 2026-09-03 17:30 UTC

@@ -55,8 +55,12 @@ export function makeRoving(container: Element, selector: string): void {
   });
 }
 
-/** Observe container width; call `render(width)` (debounced to animation frames). */
-export function onResize(el: Element, render: (width: number) => void): void {
+/**
+ * Observe container width; call `render(width)` (debounced to animation frames).
+ * Returns a disposer — call it before re-rendering the same region so old
+ * observers don't keep observing detached DOM for the life of the page.
+ */
+export function onResize(el: Element, render: (width: number) => void): () => void {
   let raf = 0;
   let last = -1;
   const ro = new ResizeObserver((entries) => {
@@ -67,6 +71,7 @@ export function onResize(el: Element, render: (width: number) => void): void {
     raf = requestAnimationFrame(() => render(w));
   });
   ro.observe(el);
+  return () => { cancelAnimationFrame(raf); ro.disconnect(); };
 }
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, ...children: (Node | string)[]): HTMLElementTagNameMap[K] {

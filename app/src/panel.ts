@@ -160,13 +160,15 @@ export function nodePanel(node: LoopNode, extraRows: [string, string][] = []): P
 /**
  * Insert the assumed-rate cost row after the size row — the position the
  * former `withCostRow()` used. Rates are read at call time, so rows always
- * reflect the current Rates settings on the next swap.
+ * reflect the current Rates settings on the next swap. Pure: returns a new
+ * PanelContent, leaving `content` untouched.
  */
 export function withCostRow(content: PanelContent, tokens: number | undefined, agent: string | undefined): PanelContent {
   if (tokens === undefined) return content;
   const row: [string, string] = ['cost (assumed)', `${fmtCost(costOf(tokens, agent))} · ${fmtRate(rateFor(agent))}`];
   const i = content.rows.findIndex(([label]) => label === 'size' || label === 'tokens');
-  if (i < 0) content.rows.push(row);
-  else content.rows.splice(i + 1, 0, row);
-  return content;
+  const rows = [...content.rows];
+  if (i < 0) rows.push(row);
+  else rows.splice(i + 1, 0, row);
+  return { ...content, rows };
 }

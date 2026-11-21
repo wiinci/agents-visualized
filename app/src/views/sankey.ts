@@ -5,14 +5,8 @@ import type { FlowLink, FlowNode, LoopNode, LoopsDataset } from '../types';
 import { fmtCompact, fmtInt, stageColor, stageLabel } from '../format';
 import { stageOf } from '../data';
 import { el, makeRoving, onResize, prefersReducedMotion } from '../util';
+import { createInfoPanel, type PanelContent } from '../panel';
 
-
-/** What the info panel renders: a fixed-size summary of title, badges and metric rows. */
-interface PanelContent {
-  title: string;
-  badges?: { text: string }[];
-  rows: [label: string, value: string][];
-}
 /**
  * Loop Sankey — "dots and hairlines" variant.
  *
@@ -82,7 +76,7 @@ function collectStageSizes(root: LoopNode, nodes: FlowNode[]): Map<string, Stage
     if (id && node.meta) {
       const s = out.get(id) ?? { n: 0, contextSum: 0, contextN: 0, promptSum: 0, promptN: 0, tokensSum: 0, tokensN: 0 };
       s.n++;
-      const ctx = node.meta.contextChars ?? (typeof node.meta['contextCharsAtEnd'] === 'number' ? (node.meta['contextCharsAtEnd'] as number) : undefined);
+      const ctx = node.meta.contextChars ?? node.meta.contextCharsAtEnd;
       if (ctx !== undefined) { s.contextSum += ctx; s.contextN++; }
       if (node.meta.promptChars !== undefined) { s.promptSum += node.meta.promptChars; s.promptN++; }
       if (node.meta.tokensEst !== undefined) { s.tokensSum += node.meta.tokensEst; s.tokensN++; }
@@ -157,14 +151,48 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
     zoomBar,
   );
   const frame = el('div', { class: 'sankey-frame' }, host);
+  // ── Node info content (the info panel's single source of truth) ────────
+  const origin = originNode(nodes, links);
+  const nodeContent = (n: FlowNode): PanelContent => {
+    const inn = links.filter((l) => l.target === n.id).reduce((s, l) => s + l.value, 0);
+    const out = links.filter((l) => l.source === n.id).reduce((s, l) => s + l.value, 0);
+    const s = sizes.get(n.id);
+    const ctx = metricOf(s, 'context'), pr = metricOf(s, 'prompt');
+    const active = metricOf(s, metric);
+    return {
+      title: stageLabel(n.stage),
+      badges: [{ text: 'observed' }, { text: n.kind }, { text: `dot area = mean ${METRIC_LABEL[metric]}` }],
+      rows: [
+        ['stage', n.stage],
+        ['steps', fmtInt(n.count)],
+        [`mean ${METRIC_LABEL[metric]} (encoded)`, active.n ? `${fmtInt(Math.round(active.mean))} chars over ${fmtInt(active.n)} step${active.n === 1 ? '' : 's'}` : 'no data → hollow ring'],
+        ['mean context size', ctx.n ? `${fmtInt(Math.round(ctx.mean))} chars (n=${fmtInt(ctx.n)})` : '—'],
+        ['mean prompt size', pr.n ? `${fmtInt(Math.round(pr.mean))} chars (n=${fmtInt(pr.n)})` : '—'],
+        ['mean tokens (est.)', s && s.tokensN ? `${fmtInt(Math.round(s.tokensSum / s.tokensN))} est. tokens over ${fmtInt(s.tokensN)} step${s.tokensN === 1 ? '' : 's'}` : '—'],
+        ['aggregation', `mean per step; ${METRIC_HELP[metric]}`],
+        ['incoming transitions', fmtInt(inn)],
+        ['outgoing transitions', fmtInt(out)],
+        ['id', n.id],
+      ],
+    };
+  };
+
   // ── Info panel: a permanent rectangular column beside the chart ─────────
-  // Always visible (never floating): the origin node's details by default, the
-  // hovered/focused node's details while interaction lasts. aria-live=polite
-  // announces content swaps; the heading gives the aside its accessible name.
-  const panelHeading = el('h3', { id: 'sankey-panel-title' }, 'Node details');
-  let panelBody = el('div', { class: 'sankey-panel-body' });
-  const panel = el('aside', { class: 'sankey-panel', 'aria-labelledby': 'sankey-panel-title', 'aria-live': 'polite' }, panelHeading, panelBody);
-  const layout = el('div', { class: 'sankey-layout' }, frame, panel);
+  // Shared component. Always visible (never floating): the origin node's
+  // details by default, the hovered/focused node's details while interaction
+  // lasts. aria-live=polite announces content swaps; the heading gives the
+  // aside its accessible name. Only node keys reach contentFor — link hover
+  // highlights without touching the panel.
+  const panel = createInfoPanel({
+    headingId: 'sankey-panel-title',
+    heading: 'Node details',
+    contentFor: (key) => {
+      const n = nodeById.get(key);
+      return n ? nodeContent(n) : null;
+    },
+    defaultContent: () => (origin ? nodeContent(origin) : null),
+  });
+  const layout = el('div', { class: 'sankey-layout' }, frame, panel.root);
   container.append(note, toolbar, layout);
 
   // ── Legend: three adjacent circles, bottom-aligned, value labelled beneath ──
@@ -446,20 +474,20 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
       .attr('aria-hidden', 'true');
     const clearHover = (): void => {
       const focused = document.activeElement?.closest('[data-hit]');
-      if (focused && host.contains(focused)) { highlightFor(focused); showPanelFor(nodeIdOf(focused)); }
-      else { clearHighlight(); showPanelFor(null); }
+      if (focused && host.contains(focused)) { highlightFor(focused); panel.showKey(nodeIdOf(focused)); }
+      else { clearHighlight(); panel.showKey(null); }
     };
     overlay.on('pointermove', (ev: PointerEvent) => {
       // Keyboard focus beats proximity: while a mark holds focus, pointer moves
       // keep highlighting the focused mark.
       const focused = document.activeElement?.closest('[data-hit]');
-      if (focused && host.contains(focused)) { highlightFor(focused); showPanelFor(nodeIdOf(focused)); return; }
+      if (focused && host.contains(focused)) { highlightFor(focused); panel.showKey(nodeIdOf(focused)); return; }
       const [x, y] = d3.pointer(ev, layer.node()); // zoom-layer coords — survives pan/zoom
       const t = targets[delaunay.find(x, y)]!;
       // Inside the rect the nearest mark always resolves and highlights — the
       // rect's bounds are the only gate (Voronoi cells tile the whole canvas).
       highlightFor(t.el);
-      if (t.kind === 'node') showPanelFor(t.key); // links highlight only; panel untouched
+      if (t.kind === 'node') panel.showKey(t.key); // links highlight only; panel untouched
     });
     overlay.on('pointerleave', () => clearHover());
 
@@ -476,7 +504,7 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
 
     makeRoving(host, '[data-hit]');
     // Metric changes relabel the panel rows; re-render for the current state (no animation).
-    renderPanel(false);
+    panel.refresh();
   };
 
   // Highlight on keyboard focus (delegated once on the persistent host; redraws replace
@@ -485,7 +513,7 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
   // marks: nodes swap its content, links leave it alone.
   const nodeIdOf = (mark: Element | null): string | null =>
     mark?.getAttribute('data-hit') === 'node' ? mark.getAttribute('data-key') : null;
-  host.addEventListener('pointerover', (e) => { const t = (e.target as Element).closest('[data-hit]'); if (t) highlightFor(t); showPanelFor(nodeIdOf(t)); });
+  host.addEventListener('pointerover', (e) => { const t = (e.target as Element).closest('[data-hit]'); if (t) highlightFor(t); panel.showKey(nodeIdOf(t)); });
   host.addEventListener('pointerout', (e) => {
     // Leaving a mark clears the hover highlight unless a mark holds keyboard focus (focus wins).
     const t = (e.target as Element).closest('[data-hit]');
@@ -496,15 +524,15 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
     // here avoids a default-view flash between adjacent marks; otherwise the keyboard-focused
     // mark wins, and with neither, the panel reverts to the origin node.
     const to = (e as PointerEvent).relatedTarget as Element | null;
-    if (nodeIdOf(to?.closest('[data-hit]') ?? null) === null) showPanelFor(nodeIdOf(focused ?? null));
+    if (nodeIdOf(to?.closest('[data-hit]') ?? null) === null) panel.showKey(nodeIdOf(focused ?? null));
   });
-  host.addEventListener('focusin', (e) => { const t = (e.target as Element).closest('[data-hit]'); if (t) highlightFor(t); showPanelFor(nodeIdOf(t)); });
+  host.addEventListener('focusin', (e) => { const t = (e.target as Element).closest('[data-hit]'); if (t) highlightFor(t); panel.showKey(nodeIdOf(t)); });
   host.addEventListener('focusout', (e) => {
     const nx = e.relatedTarget as Element | null;
     if (!nx || !nx.closest('[data-hit]')) clearHighlight();
     // Focus landing on a non-node mark (or nowhere) leaves no node to show → default view;
     // node → node transitions are handled by focusin on the next mark.
-    if (nodeIdOf(nx?.closest('[data-hit]') ?? null) === null) showPanelFor(null);
+    if (nodeIdOf(nx?.closest('[data-hit]') ?? null) === null) panel.showKey(null);
   });
 
   const zoomTo = (t: d3.ZoomTransform): void => {
@@ -533,63 +561,7 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
     if (lastWidth) draw(lastWidth);
   };
 
-  // ── Node info content (the info panel's single source of truth) ────────
-  const nodeContent = (n: FlowNode): PanelContent => {
-    const inn = links.filter((l) => l.target === n.id).reduce((s, l) => s + l.value, 0);
-    const out = links.filter((l) => l.source === n.id).reduce((s, l) => s + l.value, 0);
-    const s = sizes.get(n.id);
-    const ctx = metricOf(s, 'context'), pr = metricOf(s, 'prompt');
-    const active = metricOf(s, metric);
-    return {
-      title: stageLabel(n.stage),
-      badges: [{ text: 'observed' }, { text: n.kind }, { text: `dot area = mean ${METRIC_LABEL[metric]}` }],
-      rows: [
-        ['stage', n.stage],
-        ['steps', fmtInt(n.count)],
-        [`mean ${METRIC_LABEL[metric]} (encoded)`, active.n ? `${fmtInt(Math.round(active.mean))} chars over ${fmtInt(active.n)} step${active.n === 1 ? '' : 's'}` : 'no data → hollow ring'],
-        ['mean context size', ctx.n ? `${fmtInt(Math.round(ctx.mean))} chars (n=${fmtInt(ctx.n)})` : '—'],
-        ['mean prompt size', pr.n ? `${fmtInt(Math.round(pr.mean))} chars (n=${fmtInt(pr.n)})` : '—'],
-        ['mean tokens (est.)', s && s.tokensN ? `${fmtInt(Math.round(s.tokensSum / s.tokensN))} est. tokens over ${fmtInt(s.tokensN)} step${s.tokensN === 1 ? '' : 's'}` : '—'],
-        ['aggregation', `mean per step; ${METRIC_HELP[metric]}`],
-        ['incoming transitions', fmtInt(inn)],
-        ['outgoing transitions', fmtInt(out)],
-        ['id', n.id],
-      ],
-    };
-  };
-
-  // ── Info panel rendering ────────────────────────────────────────────────
-  // Default = the origin node; hovering/focusing a node swaps in that node's
-  // details of the hovered or focused node; hover-end/focus-out reverts. The
-  // panel is a fixed-size summary: title, badges and metric rows.
-  const origin = originNode(nodes, links);
-  let panelNodeId: string | null = null;
-  const renderPanel = (animate: boolean): void => {
-    const n = (panelNodeId !== null ? nodeById.get(panelNodeId) : undefined) ?? origin;
-    if (!n) return;
-    const c = nodeContent(n);
-    const head = el('div', { class: 'sankey-panel-head' });
-    head.append(el('strong', { class: 'sankey-panel-title' }, c.title));
-    if (c.badges?.length) {
-      const b = el('div', { class: 'sankey-panel-badges' });
-      for (const bd of c.badges) b.append(el('span', { class: 'badge' }, bd.text));
-      head.append(b);
-    }
-    const dl = el('dl', { class: 'sankey-panel-rows' });
-    for (const [k, v] of c.rows) dl.append(el('dt', {}, k), el('dd', {}, v));
-    const next = el('div', { class: `sankey-panel-body${animate ? ' is-swapping' : ''}` }, head, dl);
-    panelBody.replaceWith(next);
-    panelBody = next;
-  };
-  const showPanelFor = (id: string | null): void => {
-    if (panelNodeId === id) return;
-    panelNodeId = id;
-    renderPanel(true);
-  };
-  renderPanel(false); // default view: the origin node
 
 
-  // ResizeObserver fires once on observe (and again when a hidden tab becomes visible),
-  // so drawing is deferred until the panel actually has a width.
   onResize(container, draw);
 }
