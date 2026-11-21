@@ -1,4 +1,5 @@
 import * as d3 from 'd3';
+import { Delaunay } from 'd3';
 import { sankey, sankeyJustify, type SankeyNode, type SankeyLink } from 'd3-sankey';
 import type { FlowLink, FlowNode, LoopNode, LoopsDataset } from '../types';
 import { fmtCompact, fmtInt, stageColor, stageLabel } from '../format';
@@ -31,6 +32,17 @@ type Metric = 'context' | 'prompt';
 const R_MAX = 14;      // radius of the largest circle, px
 const R_MIN = 2;       // hollow ring radius for zero / near-zero values, px
 const LINK_W = [1, 4] as const; // compressed stroke-width range, px (scaleSqrt on transition count)
+
+/**
+ * Proximity interaction constants. Voronoi cells tile the whole canvas, so
+ * inside the overlay rect the nearest mark is always resolvable and always
+ * highlighted — the rect's bounds are the only proximity gate, with no dead
+ * zones; outside the rect (or on pointerleave) nothing highlights.
+ */
+const LINK_SAMPLE_PX = 10;   // spacing between index samples along a link's rendered path
+
+/** One hoverable point in the Delaunay index; `el` is the mark the highlight applies to. */
+interface ProximityTarget { kind: 'node' | 'link'; key: string; el: Element; x: number; y: number; }
 
 /** Canonical left-to-right order of stages; tool:* share one rank. Columns are pinned to this rank. */
 const STAGE_RANK: Record<string, number> = { user: 0, wake: 0, reason: 1, delegate: 2, worker: 3, observe: 3, respond: 4 };
@@ -336,10 +348,10 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
       .attr('d', backPath)
       .attr('data-key', (d) => `${d.source}->${d.target}`);
 
-    // Invisible ~8px hit strokes over every edge (same geometry, transparent stroke,
-    // pointer-events: stroke) carrying the interaction attributes — the QA pass found that
-    // hovering near the bbox centre of a curved 1px stroke misses because that point is not
-    // on the stroke. Focus/hover styling for these lives in styles.css (.sankey-linkhit).
+    // Invisible ~8px hit strokes over every edge (same geometry, transparent stroke)
+    // carrying the interaction attributes. Pointer duty retired (pointer-events: none
+    // in CSS — the proximity overlay resolves the cursor); they remain the keyboard
+    // roving-focus targets and the geometry source for link sampling.
     // One combined data array + one join: a second selectAll('path') join in the same group
     // would re-bind the first join's paths and shrink the layer to the last dataset.
     const hitSpecs = [
@@ -401,6 +413,56 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
     const bb = (layer.node() as SVGGElement).getBBox();
     contentBox = { x: bb.x, y: bb.y, w: bb.width, h: bb.height };
 
+    // ── Proximity index: one Delaunay over every hoverable point ────────────
+    // Node targets sit at circle centres; link targets sample the rendered hit
+    // paths every ~LINK_SAMPLE_PX (getPointAtLength), so the index follows the
+    // drawn curves rather than straight source→target chords. Samples stop
+    // short of the dot radius (paths are already shortened to the dot edges),
+    // so node centres win ties near a dot. Rebuilt on every redraw.
+    const targets: ProximityTarget[] = graph.nodes.map((d) => ({
+      kind: 'node',
+      key: d.id,
+      el: node.nodes().find((g) => g.getAttribute('data-key') === d.id)!,
+      x: cx(d), y: cy(d),
+    }));
+    hitsG.selectAll<SVGPathElement, { key: string }>('path').nodes().forEach((p) => {
+      const len = p.getTotalLength();
+      const steps = Math.max(1, Math.round(len / LINK_SAMPLE_PX));
+      for (let i = 0; i <= steps; i++) {
+        const pt = p.getPointAtLength((len * i) / steps);
+        targets.push({ kind: 'link', key: p.getAttribute('data-key') ?? '', el: p, x: pt.x, y: pt.y });
+      }
+    });
+    const delaunay = Delaunay.from(targets, (t) => t.x, (t) => t.y);
+
+    // ── Overlay: one transparent rect, the sole pointer surface ─────────────
+    // A sibling after the zoom layer, so it never pans or scales and pan/zoom
+    // gestures bubble to the svg's zoom behavior underneath. Proximity resolves
+    // the closest mark to the cursor instead of requiring pointer precision.
+    const overlay = svg.append('rect')
+      .attr('class', 'sankey-overlay')
+      .attr('width', width).attr('height', height)
+      .attr('fill', 'transparent')
+      .attr('aria-hidden', 'true');
+    const clearHover = (): void => {
+      const focused = document.activeElement?.closest('[data-hit]');
+      if (focused && host.contains(focused)) { highlightFor(focused); showPanelFor(nodeIdOf(focused)); }
+      else { clearHighlight(); showPanelFor(null); }
+    };
+    overlay.on('pointermove', (ev: PointerEvent) => {
+      // Keyboard focus beats proximity: while a mark holds focus, pointer moves
+      // keep highlighting the focused mark.
+      const focused = document.activeElement?.closest('[data-hit]');
+      if (focused && host.contains(focused)) { highlightFor(focused); showPanelFor(nodeIdOf(focused)); return; }
+      const [x, y] = d3.pointer(ev, layer.node()); // zoom-layer coords — survives pan/zoom
+      const t = targets[delaunay.find(x, y)]!;
+      // Inside the rect the nearest mark always resolves and highlights — the
+      // rect's bounds are the only gate (Voronoi cells tile the whole canvas).
+      highlightFor(t.el);
+      if (t.kind === 'node') showPanelFor(t.key); // links highlight only; panel untouched
+    });
+    overlay.on('pointerleave', () => clearHover());
+
     // Pan/zoom: drag to pan, ctrl/⌘+wheel or pinch to zoom (plain wheel keeps scrolling the page).
     zoom = d3.zoom<SVGSVGElement, undefined>()
       .scaleExtent([0.5, 8])
@@ -417,8 +479,10 @@ export function renderSankey(container: HTMLElement, ds: LoopsDataset): void {
     renderPanel(false);
   };
 
-  // Highlight on hover/focus (delegated once on the persistent host; redraws replace only the SVG).
-  // The info panel follows the same marks: nodes swap its content, links leave it alone.
+  // Highlight on keyboard focus (delegated once on the persistent host; redraws replace
+  // only the SVG). Pointer interaction lives on the draw()'s proximity overlay; pointer
+  // moves no longer require mark-precise hit-testing. The info panel follows the same
+  // marks: nodes swap its content, links leave it alone.
   const nodeIdOf = (mark: Element | null): string | null =>
     mark?.getAttribute('data-hit') === 'node' ? mark.getAttribute('data-key') : null;
   host.addEventListener('pointerover', (e) => { const t = (e.target as Element).closest('[data-hit]'); if (t) highlightFor(t); showPanelFor(nodeIdOf(t)); });
