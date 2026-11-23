@@ -137,8 +137,7 @@ export function renderTokens(
 		metric === 'cost' ? `~${fmtCost(n)}` : `≈${fmtInt(n)}`
 	const fmtValCompact = (n: number): string =>
 		metric === 'cost' ? `~${fmtCost(n)}` : `≈${fmtCompact(n)}`
-	const unitLabel =
-		metric === 'cost' ? 'modeled cost' : 'estimated tokens'
+	const unitLabel = metric === 'cost' ? 'modeled cost' : 'estimated tokens'
 	const threadFull = (tid: string): string => threadNames.get(tid)?.full ?? tid
 	const threadShort = (tid: string): string =>
 		threadNames.get(tid)?.short ?? tid

@@ -294,11 +294,7 @@ function renderMastheadKpis(ds: LoopsDataset): void {
 			fmtCost(totalCost),
 			`at ${fmtRate(rateFor(undefined))}`,
 		),
-		item(
-			'Peak context',
-			`${fmtCompact(peakCtx)} chars`,
-			'end of largest turn',
-		),
+		item('Peak context', `${fmtCompact(peakCtx)} chars`, 'end of largest turn'),
 	)
 }
 

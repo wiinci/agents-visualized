@@ -48,9 +48,7 @@ export function renderLoopModel(
 ): () => void {
 	container.replaceChildren()
 	const loops = ds.loopModel.loops
-	const cleanDescriptions = cleanLoopDescriptions(
-		loops.map(l => l.description),
-	)
+	const cleanDescriptions = cleanLoopDescriptions(loops.map(l => l.description))
 	const grid = el('div', {class: 'loops-grid'})
 
 	const contentMap = new Map<string, PanelContent>()
