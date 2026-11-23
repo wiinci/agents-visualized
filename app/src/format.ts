@@ -19,6 +19,21 @@ export const fmtTime = (iso: string | undefined): string => {
 				.replace(/\.\d+Z$/, 'Z')
 }
 
+/** Format an ISO timestamp relative to the start of a run (e.g. "+09:17"). */
+export function fmtElapsed(
+	iso: string | undefined,
+	originIso: string | undefined,
+): string | null {
+	if (!iso || !originIso) return null
+	const t = Date.parse(iso)
+	const t0 = Date.parse(originIso)
+	if (!Number.isFinite(t) || !Number.isFinite(t0)) return null
+	const diffSec = Math.max(0, Math.round((t - t0) / 1000))
+	const mins = Math.floor(diffSec / 60)
+	const secs = diffSec % 60
+	return `+${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+}
+
 /** Colour vocabulary lives in `./colors` behind a domain-checked union; format.ts keeps text/glyph concerns only. */
 export {agentColor, stageColor, statusColor} from './colors'
 

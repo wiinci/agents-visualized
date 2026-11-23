@@ -5,7 +5,9 @@ import {
 	agentColor,
 	agentDisplayName,
 	fmtCompact,
+	fmtElapsed,
 	fmtInt,
+	fmtPct,
 	nodeAriaLabel,
 } from '../format'
 import {createResizeScope, el, makeRoving} from '../util'
@@ -66,15 +68,34 @@ export function renderContext(
 
 	const grid = el('div', {class: 'multiples'})
 
+	const runStart = d3.min(ds.stats.turns, t => t.startedAt)
 	const stepById = new Map<
 		string,
-		{s: StepRef; total: number; threadLabel: string}
+		{s: StepRef; total: number; threadLabel: string; threadStepIds: string[]}
 	>()
+	let biggestStep: {id: string; chars: number; label: string} | null = null
+	const allStepIds: string[] = []
 	for (const t of threads) {
 		const tid = t.thread.meta?.threadId ?? t.thread.id
 		const lbl = nameOf(tid, t.thread.name)
-		for (const s of t.steps)
-			stepById.set(s.node.id, {s, total: t.steps.length, threadLabel: lbl})
+		const ids = t.steps.map(s => s.node.id)
+		allStepIds.push(...ids)
+		for (const s of t.steps) {
+			stepById.set(s.node.id, {
+				s,
+				total: t.steps.length,
+				threadLabel: lbl,
+				threadStepIds: ids,
+			})
+			const ch = s.node.meta?.chars ?? 0
+			if (!biggestStep || ch > biggestStep.chars) {
+				biggestStep = {
+					id: s.node.id,
+					chars: ch,
+					label: s.node.meta?.toolName ?? s.node.kind,
+				}
+			}
+		}
 	}
 	const totalSteps = threads.reduce((n, t) => n + t.steps.length, 0)
 	const largestFinal = threads.reduce(
@@ -94,25 +115,43 @@ export function renderContext(
 		contentFor: key => {
 			const found = stepById.get(key)
 			if (!found) return null
-			const base = withCostRow(
-				nodePanel(found.s.node, [
-					['thread', found.threadLabel],
-					['thread step', `#${found.s.stepIndexInThread} of ${found.total}`],
-					['turn', found.s.turn.name],
-				]),
-				found.s.node.meta?.tokensEst,
-				found.s.node.meta?.agent,
-			)
-			base.kicker = `${found.s.node.kind} · ${agentDisplayName(found.s.node.meta?.agent)}`
-			base.stats = [
-				[
-					'Context',
-					`${fmtCompact(found.s.node.meta?.contextChars ?? 0)} chars`,
-				],
-				['Step size', `${fmtCompact(found.s.node.meta?.chars ?? 0)} chars`],
+			const node = found.s.node
+			const ctx = node.meta?.contextChars ?? 0
+			const stepChars = node.meta?.chars ?? 0
+			const elapsed = fmtElapsed(node.meta?.createdAt, runStart)
+			const extra: [string, string][] = [
+				['thread', found.threadLabel],
+				['position', `step #${found.s.stepIndexInThread} of ${found.total}`],
+				['turn', found.s.turn.name],
 			]
+			if (elapsed) extra.push(['elapsed', `${elapsed} into run`])
+			const base = withCostRow(
+				nodePanel(node, extra, {
+					omit: ['kind', 'agent', 'size', 'context at this point', 'turn'],
+				}),
+				node.meta?.tokensEst,
+				node.meta?.agent,
+			)
+			base.kicker = `${node.kind} · ${agentDisplayName(node.meta?.agent)}`
+			base.accent = agentColor(node.meta?.agent)
+			base.stats = [
+				['Context', `${fmtCompact(ctx)} chars`],
+				['Step size', `${fmtCompact(stepChars)} chars`],
+			]
+			base.share = {
+				ratio: globalMax > 0 ? ctx / globalMax : 0,
+				label: `${fmtPct(ctx, globalMax)} of peak context`,
+			}
+			base.compareValue = {
+				value: ctx,
+				formatted: `${fmtCompact(ctx)} ctx`,
+			}
 			return base
 		},
+		sequenceFor: key =>
+			key === null
+				? (threads[0]?.steps.map(s => s.node.id) ?? allStepIds)
+				: (stepById.get(key)?.threadStepIds ?? allStepIds),
 		defaultContent: () => ({
 			kicker: `${fmtInt(threads.length)} threads`,
 			title: 'Context trajectories',
@@ -123,8 +162,16 @@ export function renderContext(
 			rows: [
 				['shared y-axis max', `${fmtCompact(globalMax)} chars`],
 				['largest thread', largestFinal.thread],
-				['interaction', 'hover, focus, or click a point to pin'],
 			],
+			actions: biggestStep
+				? [
+						{
+							label: `Jump to biggest step (+${fmtCompact(biggestStep.chars)} · ${biggestStep.label}) →`,
+							emphasis: 'primary',
+							onClick: () => panel.pinKey(biggestStep.id),
+						},
+					]
+				: undefined,
 		}),
 	})
 
@@ -336,9 +383,10 @@ export function renderContext(
 	btnShared.onclick = () => setShared(true)
 	btnLocal.onclick = () => setShared(false)
 
-	wireInfoPanel(hosts, panel)
+	const disposeWire = wireInfoPanel(hosts, panel)
 	const disposeRates = onRatesChange(container, panel.refresh)
 	return () => {
+		disposeWire()
 		resizeScope.dispose()
 		disposeRates()
 	}

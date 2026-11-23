@@ -3,7 +3,9 @@ import type {LoopNode, LoopsDataset} from '../types'
 import {
 	agentDisplayName,
 	fmtCompact,
+	fmtElapsed,
 	fmtInt,
+	fmtPct,
 	nodeAriaLabel,
 	statusColor,
 	statusGlyph,
@@ -108,24 +110,58 @@ export function renderDelegation(
 	const promptOf = (n: LoopNode): number =>
 		n.meta?.promptChars ?? n.meta?.chars ?? 0
 
+	const runStart = d3.min(ds.stats.turns, t => t.startedAt)
+	const totalWorkerChars =
+		d3.sum(
+			all.filter(d => d.data.kind === 'worker-thread'),
+			d => d.data.meta?.chars ?? 0,
+		) || 1
+	const allSequence = all.map(d => d.data.id)
 	const byId = new Map(all.map(d => [d.data.id, d.data]))
 	const nodeContent = (n: LoopNode) => {
 		const isWorker = n.kind === 'worker-thread'
+		const elapsed = fmtElapsed(n.meta?.createdAt, runStart)
+		const extra: [string, string][] = []
+		if (elapsed) extra.push(['started', `${elapsed} into run`])
 		const content = withCostRow(
-			nodePanel(n, [['children', fmtInt(n.children?.length ?? 0)]]),
+			nodePanel(n, extra, {
+				omit: ['kind', 'status', 'size', 'prompt size'],
+			}),
 			n.meta?.tokensEst,
 			n.meta?.agent,
 		)
 		content.kicker = `${isWorker ? 'Worker thread' : 'Delegated task'} · ${n.meta?.status?.replace(/_/g, ' ') ?? 'observed'}`
+		content.accent = statusColor(n.meta?.status)
+		const outChars = n.meta?.chars ?? 0
+		const promptChars = promptOf(n)
 		content.stats = isWorker
 			? [
-					['Thread output', `${fmtCompact(n.meta?.chars ?? 0)} chars`],
-					['Dispatch prompt', `${fmtCompact(promptOf(n))} chars`],
+					['Thread output', `${fmtCompact(outChars)} chars`],
+					['Dispatch prompt', `${fmtCompact(promptChars)} chars`],
 				]
 			: [
-					['Prompt brief', `${fmtCompact(promptOf(n))} chars`],
+					['Prompt brief', `${fmtCompact(promptChars)} chars`],
 					['Children', fmtInt(n.children?.length ?? 0)],
 				]
+		if (isWorker) {
+			content.share = {
+				ratio: outChars / totalWorkerChars,
+				label: `${fmtPct(outChars, totalWorkerChars)} of worker output`,
+			}
+			content.actions = [
+				{
+					label: 'Inspect context curve ↓',
+					onClick: () => {
+						document
+							.getElementById('context')
+							?.scrollIntoView({behavior: 'smooth'})
+					},
+				},
+			]
+		}
+		content.compareValue = isWorker
+			? {value: outChars, formatted: `${fmtCompact(outChars)} chars`}
+			: {value: promptChars, formatted: `${fmtCompact(promptChars)} prompt`}
 		if (content.text)
 			content.text.label = isWorker
 				? 'Dispatch prompt (worker’s first user message)'
@@ -140,6 +176,7 @@ export function renderDelegation(
 			const n = byId.get(key)
 			return n ? nodeContent(n) : null
 		},
+		sequenceFor: () => allSequence,
 		defaultContent: () => nodeContent(effectiveRoot),
 	})
 
@@ -150,7 +187,7 @@ export function renderDelegation(
 		`${fmtInt(all.filter(d => d.data.kind === 'task').length)} tasks and ${fmtInt(all.filter(d => d.data.kind === 'worker-thread').length)} worker threads. Dashed curves mark worker dispatches. Select any node to read the full prompt that launched it.`,
 	)
 	container.append(legend, layout, foot)
-	wireInfoPanel([host], panel)
+	const disposeWire = wireInfoPanel([host], panel)
 
 	const r = d3
 		.scaleSqrt()
@@ -332,6 +369,7 @@ export function renderDelegation(
 	resizeScope.observe(container, draw)
 	const disposeRates = onRatesChange(container, panel.refresh)
 	return () => {
+		disposeWire()
 		resizeScope.dispose()
 		disposeRates()
 	}

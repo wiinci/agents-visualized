@@ -1035,24 +1035,60 @@ svg path[tabindex]:focus-visible {
    background: transparent;
    font-size: var(--step--1);
    min-inline-size: 0;
+   transition: border-color 140ms ease;
+}
+
+.sankey-panel.is-pinned {
+   border-color: var(--panel-accent, var(--accent));
+}
+
+@container panel (max-width: 959px) {
+   .sankey-panel.is-pinned {
+      position: sticky;
+      inset-block-end: 0;
+      z-index: 15;
+      background: var(--bg);
+      border-block-start: 2px solid var(--panel-accent, var(--accent));
+      padding: 0.85rem 0.95rem 1rem;
+      margin-inline: -0.5rem;
+      max-block-size: 46dvh;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+      --scrollbar-thumb: light-dark(#7a746b, #8c857b);
+      --scrollbar-track: transparent;
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+      box-shadow: 0 -10px 28px light-dark(rgb(24 22 20 / 0.14), rgb(0 0 0 / 0.6));
+   }
 }
 
 @container panel (min-width: 960px) {
 
    .sankey-layout,
    .info-layout {
-      grid-template-columns: minmax(0, 1fr) 21rem;
+      grid-template-columns: minmax(0, 1fr) 21.5rem;
    }
 
    .sankey-panel {
       border-block-start: 0;
       border-inline-start: 1px solid var(--border);
-      padding-block-start: 0;
-      padding-inline-start: 1.25rem;
+      padding-block: 0 0.25rem;
+      padding-inline: 1.25rem 0.25rem;
       position: sticky;
       inset-block-start: calc(var(--nav-height) + 1.25rem);
       max-block-size: calc(100dvh - var(--nav-height) - 2.5rem);
+      overflow-x: hidden;
       overflow-y: auto;
+      scrollbar-gutter: stable;
+      --scrollbar-thumb: light-dark(#7a746b, #8c857b);
+      --scrollbar-track: transparent;
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+   }
+
+   .sankey-panel.is-pinned {
+      border-inline-start: 2px solid var(--panel-accent, var(--accent));
+      padding-inline-start: calc(1.25rem - 1px);
    }
 }
 
@@ -1060,8 +1096,9 @@ svg path[tabindex]:focus-visible {
    display: flex;
    align-items: center;
    justify-content: space-between;
-   gap: 0.5rem;
-   margin-block-end: 0.5rem;
+   flex-wrap: wrap;
+   gap: 0.4rem 0.6rem;
+   margin-block-end: 0.55rem;
 }
 
 .sankey-panel h3 {
@@ -1074,12 +1111,70 @@ svg path[tabindex]:focus-visible {
    font-weight: 500;
 }
 
+.marginalia-controls {
+   display: inline-flex;
+   align-items: center;
+   gap: 0.4rem;
+   margin-inline-start: auto;
+}
+
+.marginalia-state {
+   font-family: var(--font-narrow);
+   font-style: italic;
+   font-size: var(--chart-xs);
+   color: var(--fg-muted);
+}
+
+.marginalia-stepper {
+   display: inline-flex;
+   align-items: center;
+   gap: 0.2rem;
+   border: 1px solid var(--border);
+   border-radius: 2px;
+   padding: 0 0.15rem;
+}
+
+.marginalia-stepper[hidden],
+.marginalia-pin[hidden],
+.marginalia-state[hidden] {
+   display: none;
+}
+
+.marginalia-step-btn {
+   font: inherit;
+   font-family: var(--mono);
+   font-size: var(--chart-xs);
+   line-height: 1;
+   padding: 0.25em 0.4em;
+   border: 0;
+   background: transparent;
+   color: var(--fg);
+   cursor: pointer;
+}
+
+.marginalia-step-btn:hover:not(:disabled) {
+   color: var(--accent);
+}
+
+.marginalia-step-btn:disabled {
+   opacity: 0.32;
+   cursor: default;
+}
+
+.marginalia-step-pos {
+   font-family: var(--mono-comp);
+   font-size: var(--chart-xs);
+   color: var(--fg-sub);
+   padding-inline: 0.2em;
+   font-variant-numeric: tabular-nums;
+}
+
 .marginalia-pin {
    font-family: var(--mono);
    font-size: var(--chart-xs);
    letter-spacing: 0.04em;
    text-transform: uppercase;
-   padding: 0.15em 0.5em;
+   padding: 0.18em 0.5em;
    border: 1px solid var(--accent);
    border-radius: 2px;
    background: color-mix(in oklab, var(--accent) 10%, transparent);
@@ -1093,28 +1188,40 @@ svg path[tabindex]:focus-visible {
 }
 
 .sankey-panel-body.is-swapping {
-   animation: sankey-panel-swap 160ms ease-out;
+   animation: sankey-panel-swap 120ms ease-out;
 }
 
+/* Opacity-only swap: translating Y inside an overflow-y:auto container expands
+   scrollHeight by the translate offset and flashes a phantom scrollbar. */
 @keyframes sankey-panel-swap {
    from {
-      opacity: 0;
-      transform: translateY(3px);
+      opacity: 0.35;
    }
 }
 
 .sankey-panel-head {
    display: grid;
    gap: 0.25rem;
-   margin-block-end: 0.75rem;
+   margin-block-end: 0.7rem;
 }
 
 .marginalia-kicker {
+   display: inline-flex;
+   align-items: center;
+   gap: 0.45em;
    font-family: var(--mono);
    font-size: var(--chart-xs);
    letter-spacing: 0.05em;
    text-transform: uppercase;
    color: var(--fg-sub);
+}
+
+.marginalia-dot {
+   inline-size: 0.52em;
+   block-size: 0.52em;
+   border-radius: 50%;
+   background: var(--c, var(--accent));
+   flex-shrink: 0;
 }
 
 .sankey-panel-title {
@@ -1131,7 +1238,7 @@ svg path[tabindex]:focus-visible {
    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
    gap: 0.65rem 1rem;
    padding-block: 0.65rem;
-   margin-block-end: 0.75rem;
+   margin-block-end: 0.65rem;
    border-block: 1px solid var(--border);
 }
 
@@ -1151,6 +1258,35 @@ svg path[tabindex]:focus-visible {
    text-transform: uppercase;
    color: var(--fg-sub);
    margin-block-start: 0.15rem;
+}
+
+/* Tufte 3px proportional share hairline */
+.marginalia-share {
+   display: grid;
+   gap: 0.25rem;
+   margin-block-end: 0.7rem;
+}
+
+.marginalia-share-track {
+   inline-size: 100%;
+   block-size: 3px;
+   background: var(--bg-3);
+   border-radius: 1.5px;
+   overflow: hidden;
+}
+
+.marginalia-share-fill {
+   display: block;
+   inline-size: var(--w, 0%);
+   block-size: 100%;
+   background: var(--c, var(--fg));
+}
+
+.marginalia-share-label {
+   font-family: var(--mono-comp);
+   font-size: var(--chart-xs);
+   color: var(--fg-muted);
+   font-variant-numeric: tabular-nums;
 }
 
 .sankey-panel-rows {
@@ -1175,8 +1311,52 @@ svg path[tabindex]:focus-visible {
    font-size: var(--step--1);
 }
 
-.sankey-panel-textlabel {
+.marginalia-actions {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 0.45rem;
+   margin-block-start: 0.75rem;
+}
+
+.marginalia-action {
+   font: inherit;
+   font-family: var(--font-narrow);
+   font-size: var(--chart-sm);
+   padding: 0.3em 0.65em;
+   border-radius: var(--radius);
+   border: 1px solid var(--border);
+   background: transparent;
+   color: var(--fg);
+   cursor: pointer;
+}
+
+.marginalia-action:hover {
+   border-color: var(--fg-sub);
+   background: var(--bg-2);
+}
+
+.marginalia-action.is-primary {
+   border-color: var(--fg);
+   background: var(--fg);
+   color: var(--bg);
+   font-weight: 500;
+}
+
+.marginalia-action.is-primary:hover {
+   background: var(--accent);
+   border-color: var(--accent);
+}
+
+.sankey-panel-textbar {
+   display: flex;
+   align-items: baseline;
+   justify-content: space-between;
+   gap: 0.5rem;
    margin-block: 0.85rem 0;
+}
+
+.sankey-panel-textlabel {
+   margin: 0;
    font-family: var(--font-cond);
    font-size: var(--chart-xs);
    font-weight: 500;
@@ -1185,24 +1365,179 @@ svg path[tabindex]:focus-visible {
    color: var(--fg-sub);
 }
 
+.marginalia-copy {
+   font: inherit;
+   font-family: var(--mono);
+   font-size: var(--chart-xs);
+   padding: 0.1em 0.45em;
+   border: 1px solid var(--border);
+   border-radius: 2px;
+   background: transparent;
+   color: var(--fg-sub);
+   cursor: pointer;
+}
+
+.marginalia-copy:hover {
+   color: var(--fg);
+   border-color: var(--fg-muted);
+}
+
 .sankey-panel-text {
    display: block;
    white-space: pre-wrap;
    font-family: var(--font-narrow);
    font-size: var(--chart-sm);
-   line-height: 1.55;
-   max-block-size: 13lh;
+   line-height: 1.5;
+   max-block-size: 6lh;
    overflow: auto;
-   padding: 0.6em 0.75em;
+   scrollbar-gutter: stable;
+   --scrollbar-thumb: light-dark(#7a746b, #8c857b);
+   --scrollbar-track: transparent;
+   scrollbar-width: thin;
+   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+   padding: 0.55em 0.75em;
    background: var(--bg-2);
    border-radius: var(--radius);
    border-inline-start: 2px solid var(--border);
    margin-block: 0.35em 0;
 }
 
+@supports not (scrollbar-color: auto) {
+
+   .sankey-panel,
+   .sankey-panel-text {
+      scrollbar-width: auto;
+   }
+
+   .sankey-panel::-webkit-scrollbar,
+   .sankey-panel-text::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+   }
+
+   .sankey-panel::-webkit-scrollbar-thumb,
+   .sankey-panel-text::-webkit-scrollbar-thumb {
+      background: var(--scrollbar-thumb);
+      border-radius: 4px;
+   }
+
+   .sankey-panel::-webkit-scrollbar-track,
+   .sankey-panel-text::-webkit-scrollbar-track {
+      background: var(--scrollbar-track);
+   }
+}
+
+.sankey-panel.is-pinned .sankey-panel-text {
+   max-block-size: 15lh;
+}
+
 .sankey-panel-text.mono {
    font-family: var(--mono);
    font-size: var(--chart-sm);
+}
+
+/* Collapsible secondary technical Trace IDs */
+.marginalia-meta {
+   margin-block-start: 0.8rem;
+   padding-block-start: 0.55rem;
+   border-block-start: 1px solid color-mix(in oklab, var(--border) 65%, transparent);
+}
+
+.marginalia-meta > summary {
+   cursor: pointer;
+   font-family: var(--font-cond);
+   font-size: var(--chart-xs);
+   font-weight: 500;
+   letter-spacing: 0.06em;
+   text-transform: uppercase;
+   color: var(--fg-muted);
+   list-style: none;
+   display: inline-flex;
+   align-items: center;
+   gap: 0.4em;
+}
+
+.marginalia-meta > summary::-webkit-details-marker {
+   display: none;
+}
+
+.marginalia-meta > summary::before {
+   content: "▸";
+   display: inline-block;
+   transition: transform 140ms ease;
+}
+
+.marginalia-meta[open] > summary::before {
+   transform: rotate(90deg);
+}
+
+.marginalia-meta > summary:hover {
+   color: var(--fg);
+}
+
+.marginalia-meta .sankey-panel-rows {
+   margin-block-start: 0.45rem;
+}
+
+.marginalia-meta .sankey-panel-rows dd {
+   font-family: var(--mono-comp);
+   font-size: var(--chart-xs);
+   color: var(--fg-sub);
+}
+
+/* Live hover-compare footer while pinned */
+.marginalia-compare {
+   display: flex;
+   flex-wrap: wrap;
+   align-items: baseline;
+   gap: 0.25rem 0.55rem;
+   margin-block-start: 0.85rem;
+   padding-block-start: 0.65rem;
+   border-block-start: 1px dashed var(--border);
+   font-size: var(--chart-xs);
+}
+
+.marginalia-compare[hidden] {
+   display: none;
+}
+
+.marginalia-compare-label {
+   font-family: var(--font-cond);
+   font-weight: 500;
+   letter-spacing: 0.06em;
+   text-transform: uppercase;
+   color: var(--fg-muted);
+}
+
+.marginalia-compare-title {
+   font-family: var(--font-narrow);
+   font-weight: 500;
+   color: var(--fg);
+   overflow-wrap: anywhere;
+}
+
+.marginalia-compare-delta {
+   font-family: var(--mono-comp);
+   color: var(--fg-sub);
+   font-variant-numeric: tabular-nums;
+}
+
+.marginalia-compare-switch {
+   margin-inline-start: auto;
+   font: inherit;
+   font-family: var(--mono);
+   font-size: var(--chart-xs);
+   padding: 0.1em 0.45em;
+   border: 1px solid var(--border);
+   border-radius: 2px;
+   background: transparent;
+   color: var(--fg-sub);
+   cursor: pointer;
+}
+
+.marginalia-compare-switch:hover {
+   border-color: var(--accent);
+   color: var(--accent);
 }
 
 .table-scroll {
@@ -1883,6 +2218,46 @@ svg path.sankey-linkhit:focus-visible {
    font-style: italic;
 }
 
+/* ── Pinned mark visual tether across all plates ─────────────────────── */
+.ic-cell.is-pinned rect {
+   stroke: var(--accent);
+   stroke-width: 2.25;
+   fill-opacity: 1 !important;
+}
+
+.tree-node.is-pinned circle {
+   stroke: var(--accent);
+   stroke-width: 3;
+   filter: drop-shadow(0 0 4px color-mix(in oklab, var(--accent) 45%, transparent));
+}
+
+.ctx-point.is-pinned {
+   stroke: var(--accent);
+   stroke-width: 2.5;
+   fill-opacity: 1 !important;
+   opacity: 1 !important;
+}
+
+.lm-phase.is-pinned circle {
+   fill: var(--bg-3);
+   stroke: var(--accent);
+   stroke-width: 2.5;
+}
+
+.lm-edge.is-pinned {
+   stroke: var(--accent);
+   stroke-width: 2.75;
+}
+
+.tok-cell.is-pinned {
+   stroke: var(--accent);
+   stroke-width: 2.5px;
+}
+
+.data tbody tr.is-pinned td:first-child {
+   box-shadow: inset 3px 0 0 var(--accent);
+}
+
 /* Reduced motion, case by case (css guide: no global `*` duration kill switch). */
 @media (prefers-reduced-motion: reduce) {
    .chart-host.is-fading {
@@ -1890,8 +2265,11 @@ svg path.sankey-linkhit:focus-visible {
       transition: none;
    }
 
-   .sankey-panel-body.is-swapping {
+   .sankey-panel,
+   .sankey-panel-body.is-swapping,
+   .marginalia-meta > summary::before {
       animation: none;
+      transition: none;
    }
 
    .colophon-details > summary::before {

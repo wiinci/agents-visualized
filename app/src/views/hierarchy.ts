@@ -103,39 +103,98 @@ export function renderHierarchy(
 		class: 'chart-host',
 		role: 'group',
 		'aria-label':
-			'Turn hierarchy icicle; arrow keys move between cells, Enter zooms in',
+			'Turn hierarchy icicle; arrow keys move between cells, Enter pins details, double-click zooms in',
 	})
 
 	const byId = new Map<string, HNode>()
-	root.each(d => byId.set(d.data.id, d as HNode))
+	const byKind = new Map<NodeKind, string[]>()
+	const overviewSeq: string[] = []
+	root.each(d => {
+		const hn = d as HNode
+		byId.set(d.data.id, hn)
+		const arr = byKind.get(d.data.kind) ?? []
+		arr.push(d.data.id)
+		byKind.set(d.data.kind, arr)
+		if (
+			d.data.kind === 'thread' ||
+			d.data.kind === 'worker-thread' ||
+			d.data.kind === 'turn'
+		) {
+			overviewSeq.push(d.data.id)
+		}
+	})
+
+	let focusNode: HNode | null = null
+	let lastWidth = 0
 
 	const cellContent = (n: HNode) => {
 		const chars = n.data.meta?.chars ?? n.value ?? 0
-		const share = fmtPct(n.value ?? chars, totalChars)
-		const extra: [string, string][] = [
-			['share of project', share],
-			['depth', String(n.depth)],
-			['descendants', fmtInt(n.descendants().length - 1)],
-			[
-				'path',
-				n
-					.ancestors()
-					.reverse()
-					.map(a => displayNameOf(a.data))
-					.join(' › '),
-			],
-		]
+		const shareVal = n.value ?? chars
+		const share = fmtPct(shareVal, totalChars)
+		const isCurrentZoomRoot = focusNode !== null && n === focusNode
+		const hasKids = (n.children?.length ?? 0) > 0
 		const base = withCostRow(
-			nodePanel(n.data, extra),
+			nodePanel(
+				n.data,
+				[
+					['descendants', fmtInt(n.descendants().length - 1)],
+					[
+						'path',
+						n
+							.ancestors()
+							.reverse()
+							.map(a => displayNameOf(a.data))
+							.join(' › '),
+					],
+				],
+				{
+					omit: ['kind', 'agent', 'size'],
+					extraMeta: [['depth', String(n.depth)]],
+				},
+			),
 			n.data.meta?.tokensEst,
 			n.data.meta?.agent,
 		)
 		base.title = displayNameOf(n.data)
 		base.kicker = `${n.data.kind} · ${agentDisplayName(n.data.meta?.agent)}`
+		base.accent = agentColor(n.data.meta?.agent)
 		base.stats = [
 			['Volume', `${fmtCompact(chars)} chars`],
 			['Project share', share],
 		]
+		base.share = {
+			ratio: totalChars > 0 ? shareVal / totalChars : 0,
+			label: `${share} of total transcript`,
+		}
+		base.compareValue = {
+			value: shareVal,
+			formatted: `${fmtCompact(shareVal)} chars`,
+		}
+		const actions: {
+			label: string
+			onClick: () => void
+			emphasis?: 'primary' | 'subtle'
+		}[] = []
+		if (isCurrentZoomRoot && n.parent) {
+			actions.push({
+				label: '← Zoom out to parent',
+				emphasis: 'primary',
+				onClick: () => zoomTo(n.parent as HNode),
+			})
+		} else if (hasKids) {
+			actions.push({
+				label: 'Zoom into branch →',
+				emphasis: 'primary',
+				onClick: () => zoomTo(n),
+			})
+		}
+		if (focusNode !== null && !isCurrentZoomRoot) {
+			actions.push({
+				label: 'Reset zoom',
+				onClick: () => zoomTo(null),
+			})
+		}
+		if (actions.length) base.actions = actions
 		return base
 	}
 
@@ -146,6 +205,17 @@ export function renderHierarchy(
 			const n = byId.get(key)
 			return n ? cellContent(n) : null
 		},
+		sequenceFor: key => {
+			if (key === null || overviewSeq.includes(key))
+				return overviewSeq.length ? overviewSeq : [root.data.id]
+			const n = byId.get(key)
+			if (!n) return overviewSeq
+			if (n.parent?.children && n.parent.children.length > 1)
+				return n.parent.children.map(c => c.data.id)
+			const sameKind = byKind.get(n.data.kind)
+			if (sameKind && sameKind.length > 1) return sameKind
+			return overviewSeq.length > 1 ? [root.data.id, ...overviewSeq] : null
+		},
 		defaultContent: () => {
 			const r = byId.get(root.data.id)
 			return r ? cellContent(r) : null
@@ -155,13 +225,10 @@ export function renderHierarchy(
 	const foot = el(
 		'footer',
 		{class: 'plate-foot'},
-		`${fmtInt(root.descendants().length)} nodes total. Container columns (project, thread, turn) sit in lighter tints; individual steps use fuller fills. Click a container to drill in, or use the breadcrumb trail to back out.`,
+		`${fmtInt(root.descendants().length)} nodes total. Container columns (project, thread, turn) sit in lighter tints; individual steps use fuller fills. Click any cell to pin its notes; double-click a container or use the sidebar button to zoom in.`,
 	)
 	container.append(controls, layout, foot)
-	wireInfoPanel([host], panel, undefined, {pinOnClick: false})
-
-	let focusNode: HNode | null = null
-	let lastWidth = 0
+	const disposeWire = wireInfoPanel([host], panel)
 
 	const updateBreadcrumbs = (zoomRoot: HNode, laid: HNode) => {
 		crumbList.replaceChildren()
@@ -249,16 +316,9 @@ export function renderHierarchy(
 			.attr('tabindex', -1)
 			.attr('role', 'button')
 			.attr('aria-label', d => nodeAriaLabel(d.data))
-			.on('click', (_, d) => {
+			.on('dblclick', (_, d) => {
 				if (d === zoomRoot && d.parent) zoomTo(d.parent as HNode)
 				else if (d.children?.length) zoomTo(d)
-			})
-			.on('keydown', (ev: KeyboardEvent, d) => {
-				if (ev.key === 'Enter' || ev.key === ' ') {
-					ev.preventDefault()
-					if (d === zoomRoot && d.parent) zoomTo(d.parent as HNode)
-					else if (d.children?.length) zoomTo(d)
-				}
 			})
 
 		cell
@@ -309,6 +369,7 @@ export function renderHierarchy(
 		if (!prefersReducedMotion()) host.classList.add('is-fading')
 		requestAnimationFrame(() => {
 			if (lastWidth) draw(lastWidth)
+			panel.refresh()
 			host.classList.remove('is-fading')
 		})
 	}
@@ -317,6 +378,7 @@ export function renderHierarchy(
 	resizeScope.observe(container, draw)
 	const disposeRates = onRatesChange(container, panel.refresh)
 	return () => {
+		disposeWire()
 		resizeScope.dispose()
 		disposeRates()
 	}

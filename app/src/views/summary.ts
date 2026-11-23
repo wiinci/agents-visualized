@@ -5,7 +5,9 @@ import {
 	agentColor,
 	agentDisplayName,
 	fmtCompact,
+	fmtElapsed,
 	fmtInt,
+	fmtPct,
 	fmtTime,
 } from '../format'
 import {costOf, fmtCost, fmtRate, onRatesChange, rateFor} from '../cost'
@@ -133,6 +135,8 @@ export function renderSummary(
 		}
 	}
 
+	const runStart = turnRows[0]?.startedAt
+	const turnSequence = turnRows.map(t => turnKey(t.threadId, t.turnIndex))
 	const totalCost = d3.sum(agents, a => costOf(a.tokensEst, a.agent))
 	const panel = createInfoPanel({
 		headingId: 'summary-panel-title',
@@ -141,21 +145,24 @@ export function renderSummary(
 			const t = turnRows.find(x => turnKey(x.threadId, x.turnIndex) === key)
 			if (!t) return null
 			const found = turnNodes.get(key)
+			const elapsed = fmtElapsed(t.startedAt, runStart)
 			const rows: [string, string][] = [
 				['thread', threadFull(t.threadId)],
-				['agent', agentDisplayName(t.agent)],
-				['started', fmtTime(t.startedAt)],
-				...(t.endedAt
-					? [['ended', fmtTime(t.endedAt)] as [string, string]]
-					: []),
-				['steps / tools', `${fmtInt(t.steps)} / ${fmtInt(t.toolCalls)}`],
+				['started', elapsed ? `${elapsed} into run` : fmtTime(t.startedAt)],
+				['tools', `${fmtInt(t.toolCalls)} calls`],
 				['volume', `${fmtInt(t.chars)} chars · ≈${fmtInt(t.tokensEst)} tok`],
 				[
 					'cost (assumed)',
 					`${fmtCost(costOf(t.tokensEst, t.agent))} · ${fmtRate(rateFor(t.agent))}`,
 				],
-				['context at end', `${fmtInt(t.contextCharsAtEnd)} chars`],
 				['user prompt', `${fmtInt(t.userPromptChars)} chars`],
+			]
+			const metaRows: [string, string][] = [
+				['started (UTC)', fmtTime(t.startedAt)],
+				...(t.endedAt
+					? [['ended (UTC)', fmtTime(t.endedAt)] as [string, string]]
+					: []),
+				['thread id', t.threadId],
 			]
 			const content = found?.prompt
 				? nodePanel(found.prompt, [])
@@ -163,16 +170,37 @@ export function renderSummary(
 			return {
 				kicker: `Turn #${t.turnIndex + 1} · ${agentDisplayName(t.agent)}`,
 				title: `${threadFull(t.threadId)} · turn ${t.turnIndex + 1}`,
+				accent: agentColor(t.agent),
 				stats: [
 					['Steps', fmtInt(t.steps)],
 					['End context', `${fmtCompact(t.contextCharsAtEnd)} chars`],
 				],
+				share: {
+					ratio: maxCtx > 0 ? t.contextCharsAtEnd / maxCtx : 0,
+					label: `${fmtPct(t.contextCharsAtEnd, maxCtx)} of peak context`,
+				},
 				rows,
+				metaRows,
+				compareValue: {
+					value: t.contextCharsAtEnd,
+					formatted: `${fmtCompact(t.contextCharsAtEnd)} ctx`,
+				},
+				actions: [
+					{
+						label: 'Inspect in Context Growth ↑',
+						onClick: () => {
+							document
+								.getElementById('context')
+								?.scrollIntoView({behavior: 'smooth'})
+						},
+					},
+				],
 				text: content.text
 					? {...content.text, label: 'User prompt that opened this turn'}
 					: undefined,
 			}
 		},
+		sequenceFor: () => turnSequence,
 		defaultContent: () => ({
 			kicker: `${fmtInt(turns.length)} turns · ${fmtInt(ds.source.threadIds.length)} threads`,
 			title: 'Overall totals',
@@ -188,7 +216,6 @@ export function renderSummary(
 				],
 				['est. tokens', `≈${fmtInt(totals.tokens)}`],
 				['peak context', `${fmtInt(maxCtx)} chars`],
-				['interaction', 'hover, focus, or click a turn row to pin'],
 			],
 		}),
 	})
@@ -250,7 +277,7 @@ export function renderSummary(
 		),
 	)
 	container.append(turnsSection)
-	wireInfoPanel([tbl], panel)
+	const disposeWire = wireInfoPanel([tbl], panel)
 
 	// Memory facts, if the pipeline attached them
 	const mem = (ds.hierarchy.meta as {memory?: unknown} | undefined)?.memory
@@ -279,10 +306,17 @@ export function renderSummary(
 		container.append(ul)
 	}
 
-	const disposeRates = onRatesChange(container, () =>
-		renderSummary(container, ds),
-	)
-	return () => disposeRates()
+	let disposeInner: (() => void) | null = null
+	const disposeRates = onRatesChange(container, () => {
+		disposeWire()
+		disposeInner?.()
+		disposeInner = renderSummary(container, ds)
+	})
+	return () => {
+		disposeWire()
+		disposeInner?.()
+		disposeRates()
+	}
 }
 
 /**

@@ -52,18 +52,27 @@ export function renderLoopModel(
 	const grid = el('div', {class: 'loops-grid'})
 
 	const contentMap = new Map<string, PanelContent>()
+	const loopPhaseKeys = new Map<string, string[]>()
+	const loopEdgeKeys = new Map<string, string[]>()
 	for (const loop of loops) {
 		const phaseById = new Map(loop.phases.map(p => [p.id, p]))
+		const pKeys: string[] = []
 		loop.phases.forEach((p, idx) => {
-			contentMap.set(`phase:${loop.id}:${p.id}`, {
+			const k = `phase:${loop.id}:${p.id}`
+			pKeys.push(k)
+			contentMap.set(k, {
 				kicker: `Phase · ${loop.name}`,
 				title: `${idx + 1}. ${p.name}`,
+				accent: 'var(--fg)',
 				stats: [
 					['Position', `${idx + 1} of ${loop.phases.length}`],
 					['Trace kinds', String(p.observedKinds.length)],
 				],
+				share: {
+					ratio: (idx + 1) / loop.phases.length,
+					label: `step ${idx + 1} of ${loop.phases.length} in ${loop.name}`,
+				},
 				rows: [
-					['loop', loop.name],
 					[
 						'trace kinds',
 						p.observedKinds.length
@@ -78,19 +87,30 @@ export function renderLoopModel(
 				},
 			})
 		})
+		loopPhaseKeys.set(loop.id, pKeys)
+
+		const eKeys: string[] = []
 		loop.edges.forEach((e, idx) => {
+			const k = `edge:${loop.id}:${idx}`
+			eKeys.push(k)
 			const fromName = phaseById.get(e.from)?.name ?? e.from
 			const toName = phaseById.get(e.to)?.name ?? e.to
-			contentMap.set(`edge:${loop.id}:${idx}`, {
+			contentMap.set(k, {
 				kicker: `Transition · ${e.kind}`,
 				title: `${fromName} → ${toName}`,
+				accent:
+					e.kind === 'repeat'
+						? '#9a4a12'
+						: e.kind === 'exit'
+							? '#15803d'
+							: 'var(--fg-muted)',
 				rows: [
 					['loop', loop.name],
-					['kind', e.kind],
 					['condition', e.label ?? 'unconditional step'],
 				],
 			})
 		})
+		loopEdgeKeys.set(loop.id, eKeys)
 	}
 
 	const totalPhases = loops.reduce((n, l) => n + l.phases.length, 0)
@@ -99,10 +119,20 @@ export function renderLoopModel(
 		0,
 	)
 
+	const allPhaseKeys = [...loopPhaseKeys.values()].flat()
 	const panel = createInfoPanel({
 		headingId: 'loops-panel-title',
 		heading: 'Phase specification',
 		contentFor: key => contentMap.get(key) ?? null,
+		sequenceFor: key => {
+			if (key === null) return allPhaseKeys
+			const parts = key.split(':')
+			const kind = parts[0]
+			const loopId = parts[1] ?? ''
+			if (kind === 'phase') return allPhaseKeys
+			if (kind === 'edge') return loopEdgeKeys.get(loopId) ?? null
+			return allPhaseKeys
+		},
 		defaultContent: () => ({
 			kicker: 'Reference blueprint',
 			title: 'Five operating loops',
@@ -151,8 +181,11 @@ export function renderLoopModel(
 		'Solid grey arrows advance the cycle, dashed amber arrows loop back to repeat, and green arrows exit. Select any numbered phase or arrow to read its spec.',
 	)
 	container.append(layout, foot)
-	wireInfoPanel(hosts, panel)
-	return () => resizeScope.dispose()
+	const disposeWire = wireInfoPanel(hosts, panel)
+	return () => {
+		disposeWire()
+		resizeScope.dispose()
+	}
 }
 
 function wrapWords(text: string, maxChars: number): string[] {

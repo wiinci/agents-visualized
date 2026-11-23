@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import {describe, expect, it} from 'vitest'
-import {createInfoPanel, withCostRow, type PanelContent} from '../src/panel'
+import {
+	createInfoPanel,
+	wireInfoPanel,
+	withCostRow,
+	type PanelContent,
+} from '../src/panel'
 
 const content = (
 	title: string,
@@ -123,6 +128,135 @@ describe('createInfoPanel', () => {
 		p.showKey('b')
 		expect(p.root.querySelector('.sankey-panel-title')!.textContent).toBe(
 			'item:b',
+		)
+	})
+
+	it('steps through pinned sequences and renders hover-compare deltas', () => {
+		const seq = ['a', 'b', 'c']
+		const vals: Record<string, number> = {a: 100, b: 150, c: 50}
+		const p = createInfoPanel({
+			headingId: 't6',
+			heading: 'Details',
+			contentFor: key => ({
+				title: `item:${key}`,
+				rows: [],
+				compareValue: {value: vals[key] ?? 0, formatted: `${vals[key] ?? 0}`},
+				share: {ratio: 0.5, label: '50% share'},
+				metaRows: [['id', key]],
+			}),
+			sequenceFor: () => seq,
+			defaultContent: () => content('overview'),
+		})
+		p.pinKey('a')
+		expect(p.root.classList.contains('is-pinned')).toBe(true)
+		expect(p.root.querySelector('.marginalia-step-pos')!.textContent).toBe(
+			'1 / 3',
+		)
+		expect(p.root.querySelector('.marginalia-share-label')!.textContent).toBe(
+			'50% share',
+		)
+		expect(p.root.querySelector('.marginalia-meta summary')!.textContent).toBe(
+			'Trace IDs (1)',
+		)
+
+		// Hovering another key while pinned shows compare bar without changing title
+		p.showKey('b')
+		expect(p.root.querySelector('.sankey-panel-title')!.textContent).toBe(
+			'item:a',
+		)
+		const cmp = p.root.querySelector('.marginalia-compare') as HTMLElement
+		expect(cmp.hidden).toBe(false)
+		expect(cmp.textContent).toContain('item:b')
+		expect(cmp.textContent).toContain('+50% vs pinned')
+
+		// Step forward updates pin and hides compare bar
+		expect(p.step(1)).toBe(true)
+		expect(p.pinnedKey()).toBe('b')
+		expect(p.root.querySelector('.marginalia-step-pos')!.textContent).toBe(
+			'2 / 3',
+		)
+		expect(cmp.hidden).toBe(true)
+	})
+
+	it('tethers .is-pinned on chart marks and cleans up listeners on dispose', () => {
+		const host = document.createElement('div')
+		const btnA = document.createElement('button')
+		btnA.setAttribute('data-hit', 'node')
+		btnA.setAttribute('data-key', 'a')
+		btnA.setAttribute('role', 'button')
+		const btnB = document.createElement('button')
+		btnB.setAttribute('data-hit', 'node')
+		btnB.setAttribute('data-key', 'b')
+		btnB.setAttribute('role', 'button')
+		host.append(btnA, btnB)
+
+		const p = createInfoPanel({
+			headingId: 't7',
+			heading: 'Details',
+			contentFor: key => content(`item:${key}`),
+			sequenceFor: () => ['a', 'b'],
+			defaultContent: () => content('overview'),
+		})
+		const dispose = wireInfoPanel([host], p)
+		btnA.click()
+		expect(p.pinnedKey()).toBe('a')
+		expect(btnA.classList.contains('is-pinned')).toBe(true)
+		expect(btnA.getAttribute('aria-pressed')).toBe('true')
+		expect(btnB.classList.contains('is-pinned')).toBe(false)
+
+		p.step(1)
+		expect(btnA.classList.contains('is-pinned')).toBe(false)
+		expect(btnB.classList.contains('is-pinned')).toBe(true)
+
+		dispose()
+		// After dispose, Escape should no longer unpin via the disposed document listener
+		document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))
+		expect(p.pinnedKey()).toBe('b')
+	})
+
+	it('steps directly from Overview on → (first item) and ← (last item)', () => {
+		const p = createInfoPanel({
+			headingId: 't8',
+			heading: 'Details',
+			contentFor: key => content(`item:${key}`),
+			sequenceFor: () => ['x', 'y', 'z'],
+			defaultContent: () => content('overview'),
+		})
+		const nextBtn = p.root.querySelector(
+			'.marginalia-step-btn[aria-label="Next item"]',
+		) as HTMLButtonElement
+		const prevBtn = p.root.querySelector(
+			'.marginalia-step-btn[aria-label="Previous item"]',
+		) as HTMLButtonElement
+		const stepper = p.root.querySelector('.marginalia-stepper') as HTMLElement
+		expect(stepper.hidden).toBe(false)
+		expect(p.root.querySelector('.marginalia-step-pos')!.textContent).toBe(
+			'– / 3',
+		)
+
+		nextBtn.click()
+		expect(p.pinnedKey()).toBe('x')
+		expect(p.root.querySelector('.marginalia-step-pos')!.textContent).toBe(
+			'1 / 3',
+		)
+		nextBtn.click()
+		expect(p.pinnedKey()).toBe('y')
+		expect(p.root.querySelector('.marginalia-step-pos')!.textContent).toBe(
+			'2 / 3',
+		)
+
+		// Unpin back to Overview, then click ← to jump to last item
+		p.pinKey(null)
+		expect(p.root.querySelector('.sankey-panel-title')!.textContent).toBe(
+			'overview',
+		)
+		expect(p.root.querySelector('.marginalia-step-pos')!.textContent).toBe(
+			'– / 3',
+		)
+		prevBtn.click()
+		expect(p.pinnedKey()).toBe('z')
+		expect(p.root.querySelector('.marginalia-step-pos')!.textContent).toBe(
+			'3 / 3',
 		)
 	})
 })

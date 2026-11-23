@@ -184,6 +184,13 @@ export function renderSankey(
 
 	// ── Marginalia content (nodes AND links) ───────────────────────────────
 	const origin = originNode(nodes, links)
+	const totalStageSteps = d3.sum(nodes, n => n.count) || 1
+	const nodeSequence = [...nodes]
+		.sort((a, b) => rank(a.stage) - rank(b.stage) || b.count - a.count)
+		.map(n => n.id)
+	const linkSequence = [...links]
+		.sort((a, b) => b.value - a.value)
+		.map(l => `link:${l.source}->${l.target}`)
 	const outTotalOf = (id: string): number =>
 		links.filter(l => l.source === id).reduce((s, l) => s + l.value, 0)
 	const inTotalOf = (id: string): number =>
@@ -199,13 +206,13 @@ export function renderSankey(
 		const secondary: [string, string] =
 			metric === 'context'
 				? [
-						'mean prompt size',
+						'mean prompt',
 						pr.n
 							? `${fmtInt(Math.round(pr.mean))} chars (n=${fmtInt(pr.n)})`
 							: '—',
 					]
 				: [
-						'mean context size',
+						'mean context',
 						ctx.n
 							? `${fmtInt(Math.round(ctx.mean))} chars (n=${fmtInt(ctx.n)})`
 							: '—',
@@ -214,6 +221,7 @@ export function renderSankey(
 		return {
 			kicker: `Stage · ${n.kind}`,
 			title: stageLabel(n.stage),
+			accent: stageColor(n.stage),
 			stats: [
 				['Steps', fmtInt(n.count)],
 				[
@@ -221,13 +229,11 @@ export function renderSankey(
 					active.n ? `${fmtCompact(active.mean)} chars` : 'No data',
 				],
 			],
+			share: {
+				ratio: n.count / totalStageSteps,
+				label: `${fmtPct(n.count, totalStageSteps)} of all stage visits`,
+			},
 			rows: [
-				[
-					`mean ${METRIC_LABEL[metric]}`,
-					active.n
-						? `${fmtInt(Math.round(active.mean))} chars (n=${fmtInt(active.n)})`
-						: 'hollow ring (no size data)',
-				],
 				secondary,
 				[
 					'mean tokens (est.)',
@@ -235,10 +241,15 @@ export function renderSankey(
 						? `≈${fmtInt(Math.round(s.tokensSum / s.tokensN))} / step`
 						: '—',
 				],
-				['incoming', `${fmtInt(inn)} transitions`],
-				['outgoing', `${fmtInt(out)} transitions`],
-				['encoding', METRIC_HELP[metric]],
+				['flow', `${fmtInt(inn)} in · ${fmtInt(out)} out`],
 			],
+			metaRows: [
+				['encoding', METRIC_HELP[metric]],
+				['stage id', n.id],
+			],
+			compareValue: active.n
+				? {value: active.mean, formatted: `${fmtCompact(active.mean)} chars`}
+				: {value: n.count, formatted: `${fmtInt(n.count)} steps`},
 		}
 	}
 
@@ -257,19 +268,27 @@ export function renderSankey(
 					? 'Return loop'
 					: 'Forward transition',
 			title: `${stageLabel(src?.stage ?? l.source)} → ${stageLabel(tgt?.stage ?? l.target)}`,
+			accent: isBack
+				? 'var(--accent)'
+				: src
+					? stageColor(src.stage)
+					: 'var(--fg)',
 			stats: [
 				['Transitions', fmtInt(l.value)],
 				['Share of source', fmtPct(l.value, srcOut)],
 			],
+			share: {
+				ratio: srcOut > 0 ? l.value / srcOut : 0,
+				label: `${fmtPct(l.value, srcOut)} of outgoing from ${stageLabel(src?.stage ?? l.source)}`,
+			},
 			rows: [
-				['from stage', stageLabel(src?.stage ?? l.source)],
-				['to stage', stageLabel(tgt?.stage ?? l.target)],
 				[
 					'direction',
 					isSelf ? 'self-loop' : isBack ? 'return loop (cyclic)' : 'forward',
 				],
 				['edge kind', l.kind],
 			],
+			compareValue: {value: l.value, formatted: `${fmtInt(l.value)}×`},
 		}
 	}
 
@@ -337,6 +356,8 @@ export function renderSankey(
 			const n = nodeById.get(key)
 			return n ? nodeContent(n) : null
 		},
+		sequenceFor: key =>
+			key?.startsWith('link:') ? linkSequence : nodeSequence,
 		defaultContent: () => (origin ? nodeContent(origin) : null),
 		onPinChange: pinned => {
 			if (pinned === null) {
@@ -723,6 +744,7 @@ export function renderSankey(
 			lastHoverTarget = null
 			const pinned = panel.pinnedKey()
 			if (pinned !== null) {
+				panel.showKey(null, false)
 				if (pinned.startsWith('link:')) highlightByKey('link', pinned.slice(5))
 				else highlightByKey('node', pinned)
 				return
@@ -730,26 +752,29 @@ export function renderSankey(
 			const focused = document.activeElement?.closest('[data-hit]')
 			if (focused && host.contains(focused)) {
 				highlightFor(focused)
-				panel.showKey(markKeyOf(focused))
+				panel.showKey(markKeyOf(focused), false)
 			} else {
 				clearHighlight()
-				panel.showKey(null)
+				panel.showKey(null, false)
 			}
 		}
 
 		overlay.on('pointermove', (ev: PointerEvent) => {
-			if (panel.pinnedKey() !== null) return
-			const focused = document.activeElement?.closest('[data-hit]')
-			if (focused && host.contains(focused)) {
-				highlightFor(focused)
-				panel.showKey(markKeyOf(focused))
-				return
-			}
 			const [x, y] = d3.pointer(ev, layer.node())
 			const t = targets[delaunay.find(x, y)]!
 			lastHoverTarget = t
+			if (panel.pinnedKey() !== null) {
+				panel.showKey(panelKeyFor(t), false)
+				return
+			}
+			const focused = document.activeElement?.closest('[data-hit]')
+			if (focused && host.contains(focused)) {
+				highlightFor(focused)
+				panel.showKey(markKeyOf(focused), false)
+				return
+			}
 			highlightFor(t.el)
-			panel.showKey(panelKeyFor(t))
+			panel.showKey(panelKeyFor(t), false)
 		})
 		overlay.on('pointerleave', () => clearHover())
 		overlay.on('click', (ev: MouseEvent) => {
@@ -825,7 +850,18 @@ export function renderSankey(
 		}
 	})
 	const onDocEsc = (e: KeyboardEvent) => {
-		if (e.key === 'Escape' && panel.pinnedKey() !== null) panel.pinKey(null)
+		if (panel.pinnedKey() === null) return
+		if (e.key === 'Escape') {
+			panel.pinKey(null)
+			return
+		}
+		const tag = (e.target as Element | null)?.tagName
+		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+		if (e.key === '[') {
+			if (panel.step(-1)) e.preventDefault()
+		} else if (e.key === ']') {
+			if (panel.step(1)) e.preventDefault()
+		}
 	}
 	document.addEventListener('keydown', onDocEsc)
 

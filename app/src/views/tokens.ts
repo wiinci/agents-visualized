@@ -5,7 +5,9 @@ import {
 	agentColor,
 	agentDisplayName,
 	fmtCompact,
+	fmtElapsed,
 	fmtInt,
+	fmtPct,
 	fmtTime,
 } from '../format'
 import {
@@ -42,6 +44,7 @@ let focusAfter: string | null = null
 
 let chartResizeScope = createResizeScope()
 let disposeRates: (() => void) | null = null
+let disposeWire: (() => void) | null = null
 
 const cellKey = (threadId: string, turnIndex: number, agent: string): string =>
 	`${turnKey(threadId, turnIndex)}|${agent}`
@@ -111,6 +114,8 @@ export function renderTokens(
 	chartResizeScope = createResizeScope()
 	disposeRates?.()
 	disposeRates = null
+	disposeWire?.()
+	disposeWire = null
 	container.replaceChildren()
 
 	const turns: TurnStat[] = [...ds.stats.turns].sort(
@@ -258,6 +263,18 @@ export function renderTokens(
 	const totalCostAll = d3.sum(ds.stats.agents, x =>
 		costOf(x.tokensEst, x.agent),
 	)
+	const totalMetricAll = metric === 'cost' ? totalCostAll : totalTokensAll
+	const runStart = turns[0]?.startedAt
+	const allCellKeys: string[] = []
+	const nonZeroCellKeys: string[] = []
+	for (const t of turns) {
+		for (const a of agents) {
+			const k = cellKey(t.threadId, t.turnIndex, a)
+			allCellKeys.push(k)
+			if (valueOf(t, a) > 0) nonZeroCellKeys.push(k)
+		}
+	}
+	const turnStepKeys = turns.map((_, i) => `turn:${i}`)
 
 	const panel = createInfoPanel({
 		headingId: 'tokens-panel-title',
@@ -266,6 +283,13 @@ export function renderTokens(
 			key.startsWith('turn:')
 				? lineContent(Number(key.slice(5)))
 				: cellContent(key),
+		sequenceFor: key => {
+			if (key === null)
+				return nonZeroCellKeys.length ? nonZeroCellKeys : allCellKeys
+			if (key.startsWith('turn:')) return turnStepKeys
+			if (nonZeroCellKeys.includes(key)) return nonZeroCellKeys
+			return allCellKeys
+		},
 		defaultContent: () => ({
 			kicker: `${fmtInt(turns.length)} turns · ${fmtInt(agents.length)} agents`,
 			title: 'Trace totals',
@@ -304,32 +328,42 @@ export function renderTokens(
 				if (cellKey(t.threadId, t.turnIndex, a) !== key) continue
 				const v = valueOf(t, a)
 				const shown = val(v, a)
+				const elapsed = fmtElapsed(t.startedAt, runStart)
 				const rows: [string, string][] = [
-					['agent', agentDisplayName(a)],
 					[
-						unitLabel,
+						'rate / basis',
 						metric === 'cost'
-							? `${fmtCost(shown)} · ${fmtRate(rateFor(a))}`
-							: `≈${fmtInt(v)} (chars ÷ 4)`,
+							? `${fmtRate(rateFor(a))} · ≈${fmtInt(v)} tok`
+							: `${fmtCost(costOf(v, a))} at ${fmtRate(rateFor(a))}`,
 					],
 					['context at end', `${fmtInt(t.contextCharsAtEnd)} chars`],
-					['user prompt', `${fmtInt(t.userPromptChars)} chars`],
-					['steps / tools', `${fmtInt(t.steps)} / ${fmtInt(t.toolCalls)}`],
-					['started', fmtTime(t.startedAt)],
+					['tools', `${fmtInt(t.toolCalls)} calls`],
+					['started', elapsed ? `${elapsed} into run` : fmtTime(t.startedAt)],
 				]
 				if (v === 0)
-					rows.splice(1, 0, [
+					rows.unshift([
 						'note',
 						`no steps by ${agentDisplayName(a)} in this turn`,
 					])
 				return {
 					kicker: `Turn cell · ${agentDisplayName(a)}`,
 					title: turnName(t),
+					accent: agentColor(a),
 					stats: [
 						[metric === 'cost' ? 'Modeled cost' : 'Est. tokens', fmtVal(shown)],
 						['Steps', fmtInt(t.steps)],
 					],
+					share: {
+						ratio: totalMetricAll > 0 ? shown / totalMetricAll : 0,
+						label: `${fmtPct(shown, totalMetricAll)} of run ${unitLabel}`,
+					},
 					rows,
+					metaRows: [
+						['started (UTC)', fmtTime(t.startedAt)],
+						['user prompt', `${fmtInt(t.userPromptChars)} chars`],
+						['thread id', t.threadId],
+					],
+					compareValue: {value: shown, formatted: fmtValCompact(shown)},
 					text: excerptFor(t),
 				}
 			}
@@ -340,25 +374,34 @@ export function renderTokens(
 	function lineContent(i: number): PanelContent | null {
 		const t = turns[i]
 		if (!t) return null
+		const delta = turnTotals[i] ?? 0
+		const cum = cumulativeTotals[i] ?? 0
+		const elapsed = fmtElapsed(t.startedAt, runStart)
 		const rows: [string, string][] = [
 			...series.map((s): [string, string] => [
 				agentDisplayName(s.agent),
 				`+${fmtVal(s.delta[i] ?? 0)} · cum. ${fmtVal(s.cum[i] ?? 0)}`,
 			]),
-			[
-				'all agents',
-				`+${fmtVal(turnTotals[i] ?? 0)} · cum. ${fmtVal(cumulativeTotals[i] ?? 0)}`,
-			],
-			['started', fmtTime(t.startedAt)],
+			['started', elapsed ? `${elapsed} into run` : fmtTime(t.startedAt)],
 		]
 		return {
 			kicker: `Global turn #${i + 1} of ${turns.length}`,
 			title: turnName(t),
+			accent: agentColor(t.agent),
 			stats: [
-				['Turn delta', fmtVal(turnTotals[i] ?? 0)],
-				['Cumulative', fmtVal(cumulativeTotals[i] ?? 0)],
+				['Turn delta', fmtVal(delta)],
+				['Cumulative', fmtVal(cum)],
 			],
+			share: {
+				ratio: totalMetricAll > 0 ? cum / totalMetricAll : 0,
+				label: `${fmtPct(cum, totalMetricAll)} of total reached by T${i + 1}`,
+			},
 			rows,
+			metaRows: [
+				['started (UTC)', fmtTime(t.startedAt)],
+				['thread id', t.threadId],
+			],
+			compareValue: {value: delta, formatted: `+${fmtValCompact(delta)}`},
 			text: excerptFor(t),
 		}
 	}
@@ -946,7 +989,16 @@ export function renderTokens(
 
 	chartResizeScope.observe(lineHost, drawLine)
 
-	wireInfoPanel([heatHost, lineHost], panel, mark =>
+	const unsubTurnPin = panel.onPin(pk => {
+		if (pk?.startsWith('turn:')) {
+			const idx = Number(pk.slice(5))
+			if (Number.isInteger(idx)) showFocusFn?.(idx)
+		} else {
+			hideFocusFn?.()
+		}
+	})
+
+	disposeWire = wireInfoPanel([heatHost, lineHost], panel, mark =>
 		mark.classList.contains('tok-hit')
 			? `turn:${mark.getAttribute('data-key') ?? ''}`
 			: mark.getAttribute('data-key'),
@@ -959,6 +1011,9 @@ export function renderTokens(
 		focusAfter = null
 	}
 	return () => {
+		unsubTurnPin()
+		disposeWire?.()
+		disposeWire = null
 		chartResizeScope.dispose()
 		disposeRates?.()
 		disposeRates = null
