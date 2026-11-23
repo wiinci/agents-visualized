@@ -212,7 +212,7 @@ export function renderSankey(
 					]
 
 		return {
-			kicker: `Observed stage · ${n.kind}`,
+			kicker: `Stage · ${n.kind}`,
 			title: stageLabel(n.stage),
 			stats: [
 				['Steps', fmtInt(n.count)],
@@ -252,10 +252,10 @@ export function renderSankey(
 		const srcOut = outTotalOf(l.source)
 		return {
 			kicker: isSelf
-				? 'Observed self-loop'
+				? 'Self-loop'
 				: isBack
-					? 'Observed loop-back cycle'
-					: 'Observed forward transition',
+					? 'Return loop'
+					: 'Forward transition',
 			title: `${stageLabel(src?.stage ?? l.source)} → ${stageLabel(tgt?.stage ?? l.target)}`,
 			stats: [
 				['Transitions', fmtInt(l.value)],
@@ -266,7 +266,7 @@ export function renderSankey(
 				['to stage', stageLabel(tgt?.stage ?? l.target)],
 				[
 					'direction',
-					isSelf ? 'self-loop' : isBack ? 'loop-back (cyclic)' : 'forward',
+					isSelf ? 'self-loop' : isBack ? 'return loop (cyclic)' : 'forward',
 				],
 				['edge kind', l.kind],
 			],
@@ -353,9 +353,9 @@ export function renderSankey(
 	const foot = el(
 		'footer',
 		{class: 'plate-foot'},
-		`Reading key: Hollow rings mark stages with no size data. `,
-		`${fmtInt(back.length)} cyclic loop-back edges bow beneath the flow as dashed arcs (minor cycles under ${fmtInt(backThreshold)}× recede until hovered or toggled). `,
-		`Drag to pan; Ctrl/⌘ + scroll or buttons to zoom; click any dot or line to pin its marginalia.`,
+		`Hollow rings mark stages with no recorded size. `,
+		`${fmtInt(back.length)} return arcs curve underneath as dashed lines, with minor cycles under ${fmtInt(backThreshold)}× dimmed until hovered or toggled. `,
+		`Drag to pan, scroll with Ctrl/⌘ to zoom, and click any dot or line to pin its notes.`,
 	)
 	container.append(toolbar, layout, foot)
 

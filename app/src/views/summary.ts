@@ -178,7 +178,7 @@ export function renderSummary(
 			title: 'Overall totals',
 			stats: [
 				['Volume', `${fmtCompact(totals.chars)} chars`],
-				['Assumed cost', fmtCost(totalCost)],
+				['Modeled cost', fmtCost(totalCost)],
 			],
 			rows: [
 				['messages', fmtInt(ds.source.messageCount)],
@@ -256,11 +256,7 @@ export function renderSummary(
 	const mem = (ds.hierarchy.meta as {memory?: unknown} | undefined)?.memory
 	if (Array.isArray(mem) && mem.length) {
 		container.append(
-			el(
-				'h3',
-				{},
-				`Memory facts attached to the project (${fmtInt(mem.length)})`,
-			),
+			el('h3', {}, `Attached project memory (${fmtInt(mem.length)})`),
 		)
 		const ul = el('ul', {class: 'facts'})
 		for (const f of mem) {

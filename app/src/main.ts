@@ -66,14 +66,14 @@ const PLATES: PlateDef[] = [
 	{
 		id: 'loops',
 		navNum: 'I',
-		navLabel: 'Model',
+		navLabel: 'Blueprint',
 		kickerNum: 'Plate I',
-		kickerDomain: 'Canonical Architecture',
-		kickerTag: 'Documented model',
+		kickerDomain: 'The Blueprint',
+		kickerTag: 'Reference spec',
 		title: ds =>
-			`${fmtInt(ds.loopModel.loops.length)} documented loops govern how the agent reasons, acts, and delegates`,
+			`${fmtInt(ds.loopModel.loops.length)} operating loops define how Obvious is meant to run`,
 		deck: () =>
-			'Before inspecting the empirical trace, these canonical cycles establish the intended architecture — turn execution, delegation, skill retrieval, memory, and human-in-the-loop.',
+			'Drawn from Obvious operating instructions rather than a live run, these five cycles lay out the intended playbook: handling a turn, delegating to workers, loading skills, carrying memory forward, and pausing for human approval. Everything from Plate II onward comes from a recorded trace.',
 		render: renderLoopModel,
 		defer: false,
 	},
@@ -82,8 +82,8 @@ const PLATES: PlateDef[] = [
 		navNum: 'II',
 		navLabel: 'Execution Flow',
 		kickerNum: 'Plate II',
-		kickerDomain: 'Observed Transitions',
-		kickerTag: 'Empirical trace',
+		kickerDomain: 'Execution Flow',
+		kickerTag: 'Recorded trace',
 		title: ds => {
 			const {back} = splitCycles(ds.flows.nodes, ds.flows.links)
 			const topBack = [...back].sort((a, b) => b.value - a.value)[0]
@@ -94,12 +94,12 @@ const PLATES: PlateDef[] = [
 				const t =
 					ds.flows.nodes.find(n => n.id === topBack.target)?.stage ??
 					topBack.target
-				return `Observed execution cycles tightly through ${s} → ${t} (${fmtInt(topBack.value)}×) across ${fmtInt(back.length)} loop-back paths`
+				return `In practice, execution loops hardest from ${s} back to ${t} (${fmtInt(topBack.value)}× across ${fmtInt(back.length)} return paths)`
 			}
-			return `Observed transitions across ${fmtInt(ds.flows.nodes.length)} stages and ${fmtInt(back.length)} loop-back paths`
+			return `Recorded transitions across ${fmtInt(ds.flows.nodes.length)} stages and ${fmtInt(back.length)} return paths`
 		},
 		deck: () =>
-			'Every observed transition from user request to assistant response. Dot area encodes mean size per step (square-root scale); hairline weight encodes transition count.',
+			'Every step transition from user prompt to final reply. Circle area scales with mean step size; line weight reflects how often that path fired.',
 		render: renderSankey,
 		defer: false,
 	},
@@ -108,16 +108,16 @@ const PLATES: PlateDef[] = [
 		navNum: 'III',
 		navLabel: 'Hierarchy',
 		kickerNum: 'Plate III',
-		kickerDomain: 'Volume & Structure',
+		kickerDomain: 'Transcript Bulk',
 		title: ds => {
 			const totalChars = d3.sum(ds.stats.agents, a => a.chars)
 			const {charPct, hasWorkers} = workerShare(ds)
 			return hasWorkers
-				? `Delegated worker threads account for ${charPct} of all ${fmtCompact(totalChars)} observed characters`
-				: `Project volume across ${fmtInt(ds.source.threadIds.length)} threads and ${fmtInt(ds.stats.turns.length)} turns`
+				? `Delegated workers generate ${charPct} of the ${fmtCompact(totalChars)}-character transcript`
+				: `Transcript volume across ${fmtInt(ds.source.threadIds.length)} threads and ${fmtInt(ds.stats.turns.length)} turns`
 		},
 		deck: () =>
-			'Depth runs left to right — project, thread, turn, and step — with bar height proportional to text and JSON bulk. Click any container cell to drill down.',
+			'Nested from left to right: project, thread, turn, and individual step. Bar height tracks character bulk. Click any container block to zoom into its branch.',
 		render: renderHierarchy,
 		defer: true,
 	},
@@ -129,10 +129,10 @@ const PLATES: PlateDef[] = [
 		kickerDomain: 'Task Fan-Out',
 		title: ds => {
 			const {tasks, workers} = countDelegation(ds)
-			return `The orchestrator fans out ${fmtInt(tasks)} scoped tasks into ${fmtInt(workers)} worker thread${workers === 1 ? '' : 's'}`
+			return `One brief splits into ${fmtInt(tasks)} scoped tasks and ${fmtInt(workers)} worker thread${workers === 1 ? '' : 's'}`
 		},
 		deck: () =>
-			'From root brief to delegated subtasks and worker runs. Circle area encodes dispatch prompt size; solid nodes mark tasks and ringed nodes mark worker threads.',
+			'How the orchestrator hands off work. Circle area encodes dispatch prompt length; solid circles mark task records and ringed circles mark the worker threads they spawned.',
 		render: renderDelegation,
 		defer: true,
 	},
@@ -141,13 +141,13 @@ const PLATES: PlateDef[] = [
 		navNum: 'V',
 		navLabel: 'Context',
 		kickerNum: 'Plate V',
-		kickerDomain: 'Context Accumulation',
+		kickerDomain: 'Context Growth',
 		title: ds => {
 			const peak = d3.max(ds.stats.turns, t => t.contextCharsAtEnd) ?? 0
-			return `Context climbs to ${fmtCompact(peak)} characters inside the largest thread`
+			return `Inside the busiest thread, context swells to ${fmtCompact(peak)} characters`
 		},
 		deck: () =>
-			'Step-by-step cumulative context trajectories across every observed thread, plotted on a shared vertical scale by default so relative growth reads honestly.',
+			'Cumulative context across every step, one small multiple per thread. All panels share a vertical scale by default so you can compare their true weight at a glance.',
 		render: renderContext,
 		defer: true,
 	},
@@ -156,15 +156,15 @@ const PLATES: PlateDef[] = [
 		navNum: 'VI',
 		navLabel: 'Tokens & Cost',
 		kickerNum: 'Plate VI',
-		kickerDomain: 'Estimated Consumption',
+		kickerDomain: 'Token Footprint',
 		title: ds => {
 			const {tokenPct, hasWorkers} = workerShare(ds)
 			return hasWorkers
-				? `Worker execution drives ${tokenPct} of estimated token consumption`
-				: `Estimated token consumption across ${fmtInt(ds.stats.turns.length)} observed turns`
+				? `Worker threads drive ${tokenPct} of the run's estimated tokens`
+				: `Estimated token footprint across ${fmtInt(ds.stats.turns.length)} turns`
 		},
 		deck: () =>
-			'Estimated tokens (characters ÷ 4) and illustrative cost at editable assumed rates, broken down by turn and agent. Never measured provider billing.',
+			'The trace records raw characters, not provider invoices. Token counts here are approximated at four characters per token, and dollar totals use the editable rates below.',
 		render: renderTokens,
 		defer: true,
 	},
@@ -173,10 +173,10 @@ const PLATES: PlateDef[] = [
 		navNum: 'VII',
 		navLabel: 'Ledger',
 		kickerNum: 'Appendix',
-		kickerDomain: 'Complete Trace Ledger',
-		title: () => 'Per-agent, per-tool, and turn-by-turn empirical ledger',
+		kickerDomain: 'Full Ledger',
+		title: () => 'Every agent, tool call, and turn in numbers',
 		deck: () =>
-			'Exact tabular breakdown of every agent, tool invocation, and turn — serving as a numeric reference and accessible companion to the visual plates above.',
+			'The complete tabular breakdown behind the charts above: per-agent totals, tool call counts and errors, and a turn-by-turn log.',
 		render: renderSummary,
 		defer: true,
 	},
@@ -278,26 +278,26 @@ function renderMastheadKpis(ds: LoopsDataset): void {
 			fmtInt(ds.source.threadIds.length),
 			`${fmtInt(ds.source.messageCount)} messages`,
 		),
-		item('Turns', fmtInt(turns.length), `${fmtInt(totalSteps)} observed steps`),
+		item('Turns', fmtInt(turns.length), `${fmtInt(totalSteps)} steps`),
 		item(
 			'Tool calls',
 			fmtInt(totalToolCalls),
-			totalErrors ? `${fmtInt(totalErrors)} errors` : '0 errors',
+			totalErrors ? `${fmtInt(totalErrors)} errors` : 'no errors',
 		),
 		item(
-			'Volume',
+			'Transcript',
 			`${fmtCompact(totalChars)} chars`,
-			`≈${fmtCompact(totalTokens)} est. tokens`,
+			`≈${fmtCompact(totalTokens)} tokens`,
 		),
 		item(
-			'Assumed cost',
+			'Modeled cost',
 			fmtCost(totalCost),
-			`${fmtRate(rateFor(undefined))} default · est.`,
+			`at ${fmtRate(rateFor(undefined))}`,
 		),
 		item(
 			'Peak context',
 			`${fmtCompact(peakCtx)} chars`,
-			'at end of largest turn',
+			'end of largest turn',
 		),
 	)
 }
@@ -307,18 +307,18 @@ function renderSource(loaded: LoadedDataset): void {
 	const datelineText = byId<HTMLSpanElement>('dateline-text')
 	const datelineDot = byId<HTMLSpanElement>('dateline-dot')
 	datelineDot.classList.toggle('is-fixture', isFixture)
-	datelineText.textContent = `${isFixture ? 'Fixture trace' : 'Observed trace'} · ${fmtInt(data.source.threadIds.length)} threads · ${fmtInt(data.source.messageCount)} messages · ${fmtTime(data.generatedAt)}`
+	datelineText.textContent = `${isFixture ? 'Sample fixture' : 'Recorded trace'} · ${fmtInt(data.source.threadIds.length)} threads · ${fmtInt(data.source.messageCount)} messages · ${fmtTime(data.generatedAt)}`
 
 	const banner = byId<HTMLDivElement>('banner')
 	if (isFixture) {
 		banner.hidden = false
 		banner.classList.add('is-warning')
 		banner.replaceChildren(
-			el('strong', {}, 'Fixture dataset. '),
-			`${loadNote} Nothing shown here is real Obvious activity.`,
+			el('strong', {}, 'Sample fixture. '),
+			`${loadNote} Figures below come from synthetic test data, not a live Obvious run.`,
 		)
 	} else {
-		// Live data needs no banner box — provenance lives quietly in the dateline + colophon.
+		// Live data needs no banner box; provenance lives quietly in the dateline + colophon.
 		banner.hidden = true
 	}
 
@@ -339,7 +339,7 @@ function renderSource(loaded: LoadedDataset): void {
 		...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]),
 	)
 	byId<HTMLSpanElement>('footer-note').textContent =
-		`Token counts are estimates (chars ÷ 4). Generated ${fmtTime(data.generatedAt)} · ${isFixture ? 'fixture' : 'live'} dataset.`
+		`Tokens approximated at chars ÷ 4. Captured ${fmtTime(data.generatedAt)} (${isFixture ? 'fixture' : 'live'}).`
 }
 
 /**

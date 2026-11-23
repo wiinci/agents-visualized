@@ -155,7 +155,7 @@ export function renderHierarchy(
 	const foot = el(
 		'footer',
 		{class: 'plate-foot'},
-		`Reading key: ${fmtInt(root.descendants().length)} observed nodes. Container columns (project, thread, turn) use soft fills; leaf steps use denser fills. Click any container cell to zoom in, or use the breadcrumb trail above to step back out.`,
+		`${fmtInt(root.descendants().length)} nodes total. Container columns (project, thread, turn) sit in lighter tints; individual steps use fuller fills. Click a container to drill in, or use the breadcrumb trail to back out.`,
 	)
 	container.append(controls, layout, foot)
 	wireInfoPanel([host], panel, undefined, {pinOnClick: false})

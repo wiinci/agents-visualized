@@ -114,11 +114,11 @@ export function renderContext(
 			return base
 		},
 		defaultContent: () => ({
-			kicker: `${fmtInt(threads.length)} observed threads`,
+			kicker: `${fmtInt(threads.length)} threads`,
 			title: 'Context trajectories',
 			stats: [
 				['Peak context', `${fmtCompact(largestFinal.end)} chars`],
-				['Observed steps', fmtInt(totalSteps)],
+				['Total steps', fmtInt(totalSteps)],
 			],
 			rows: [
 				['shared y-axis max', `${fmtCompact(globalMax)} chars`],
@@ -132,7 +132,7 @@ export function renderContext(
 	const foot = el(
 		'footer',
 		{class: 'plate-foot'},
-		`Reading key: Solid line = cumulative context chars at each step; faint bars underneath = each step's own size; vertical dashed rules = turn boundaries. Toggle "Fit each thread" to examine smaller threads in detail.`,
+		`Lines track cumulative context at each step; faint bars below show each step’s own size, and vertical dashed rules mark turn breaks. Switch to "Fit each thread" to inspect quieter threads up close.`,
 	)
 	container.append(toolbar, layout, foot)
 
@@ -206,7 +206,7 @@ export function renderContext(
 					'aria-label',
 					`Context size over ${t.steps.length} steps in ${threadTitle}`,
 				)
-			svg.append('title').text(`Context growth — ${threadTitle}`)
+			svg.append('title').text(`Context growth: ${threadTitle}`)
 
 			svg
 				.append('g')

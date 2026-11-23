@@ -166,8 +166,8 @@ export function mountRatesControl(host: HTMLElement): void {
 			el(
 				'p',
 				{class: 'rates-intro'},
-				el('strong', {}, 'Assumed rate, not provider data.'),
-				' Cost = estimated tokens (chars ÷ 4) × these rates. Illustrative only — the dataset carries no usage data.',
+				el('strong', {}, 'Modeled rates, not billing data.'),
+				' Dollar figures multiply estimated tokens (chars ÷ 4) by the rates below.',
 			),
 		)
 		form.append(
@@ -263,7 +263,7 @@ export function mountRatesControl(host: HTMLElement): void {
 			'aria-haspopup': 'dialog',
 			'aria-expanded': 'false',
 		},
-		`Assumed rates (${fmtRate(getRates().default)})`,
+		`Edit rates (${fmtRate(getRates().default)})`,
 	)
 	if (supportsPopover) {
 		btn.setAttribute('popovertarget', 'rates-pop')

@@ -4,11 +4,43 @@ import {KIND_LABEL, fmtInt} from '../format'
 import {createResizeScope, el, makeRoving} from '../util'
 import {createInfoPanel, wireInfoPanel, type PanelContent} from '../panel'
 
+const BOILERPLATE_LEAD_RE =
+	/^(?:documented model|canonical model|not observed)\b[^.?!]*[.?!]\s+/i
+
 /**
- * Plate I — The five canonical loops from `loopModel`, each drawn as a directed
+ * Remove repeated provenance boilerplate (such as "Documented model (from
+ * Obvious operating instructions), not observed.") shared across loop cards,
+ * since Plate I states that context once in its header and deck.
+ */
+export function cleanLoopDescriptions(
+	descriptions: readonly string[],
+): string[] {
+	const trimmed = descriptions.map(d => d.trim())
+	let sharedLead = ''
+	if (trimmed.length >= 2) {
+		const firstMatch = trimmed[0]?.match(/^[^.?!]+[.?!]\s+/)
+		if (firstMatch) {
+			const candidate = firstMatch[0]
+			if (
+				trimmed.every(
+					d => d.startsWith(candidate) && d.length > candidate.length,
+				)
+			) {
+				sharedLead = candidate
+			}
+		}
+	}
+	return trimmed.map(d => {
+		const withoutShared = sharedLead ? d.slice(sharedLead.length) : d
+		return withoutShared.replace(BOILERPLATE_LEAD_RE, '').trim()
+	})
+}
+
+/**
+ * Plate I: The five operating loops from `loopModel`, each drawn as a directed
  * cycle in a spacious 2-column grid paired with sticky marginalia. Hovering,
- * focusing, or clicking any phase or edge reveals its full specification and
- * mapped observed node kinds.
+ * focusing, or clicking any phase or edge reveals its specification and mapped
+ * trace node kinds.
  */
 export function renderLoopModel(
 	container: HTMLElement,
@@ -16,6 +48,9 @@ export function renderLoopModel(
 ): () => void {
 	container.replaceChildren()
 	const loops = ds.loopModel.loops
+	const cleanDescriptions = cleanLoopDescriptions(
+		loops.map(l => l.description),
+	)
 	const grid = el('div', {class: 'loops-grid'})
 
 	const contentMap = new Map<string, PanelContent>()
@@ -23,16 +58,16 @@ export function renderLoopModel(
 		const phaseById = new Map(loop.phases.map(p => [p.id, p]))
 		loop.phases.forEach((p, idx) => {
 			contentMap.set(`phase:${loop.id}:${p.id}`, {
-				kicker: `Documented phase · ${loop.name}`,
+				kicker: `Phase · ${loop.name}`,
 				title: `${idx + 1}. ${p.name}`,
 				stats: [
-					['Loop position', `${idx + 1} of ${loop.phases.length}`],
-					['Observed kinds', String(p.observedKinds.length)],
+					['Position', `${idx + 1} of ${loop.phases.length}`],
+					['Trace kinds', String(p.observedKinds.length)],
 				],
 				rows: [
 					['loop', loop.name],
 					[
-						'maps to observed',
+						'trace kinds',
 						p.observedKinds.length
 							? p.observedKinds.map(k => KIND_LABEL[k] ?? k).join(', ')
 							: 'conceptual only',
@@ -41,7 +76,7 @@ export function renderLoopModel(
 				text: {
 					body: p.description,
 					mono: false,
-					label: 'Canonical specification',
+					label: 'Specification',
 				},
 			})
 		})
@@ -49,7 +84,7 @@ export function renderLoopModel(
 			const fromName = phaseById.get(e.from)?.name ?? e.from
 			const toName = phaseById.get(e.to)?.name ?? e.to
 			contentMap.set(`edge:${loop.id}:${idx}`, {
-				kicker: `Documented transition · ${e.kind}`,
+				kicker: `Transition · ${e.kind}`,
 				title: `${fromName} → ${toName}`,
 				rows: [
 					['loop', loop.name],
@@ -71,10 +106,10 @@ export function renderLoopModel(
 		heading: 'Phase specification',
 		contentFor: key => contentMap.get(key) ?? null,
 		defaultContent: () => ({
-			kicker: 'Canonical architecture · Not observed data',
-			title: 'Five documented loops',
+			kicker: 'Reference blueprint',
+			title: 'Five operating loops',
 			stats: [
-				['Canonical loops', fmtInt(loops.length)],
+				['Loops', fmtInt(loops.length)],
 				[
 					'Phases / repeats',
 					`${fmtInt(totalPhases)} / ${fmtInt(totalRepeats)}`,
@@ -89,14 +124,14 @@ export function renderLoopModel(
 
 	const hosts: HTMLElement[] = []
 	const resizeScope = createResizeScope()
-	for (const loop of loops) {
+	loops.forEach((loop, loopIdx) => {
 		const fig = el('figure', {class: 'multiple loop-card'})
 		fig.append(
 			el(
 				'figcaption',
 				{},
 				el('span', {class: 'multiple-title'}, loop.name),
-				el('span', {class: 'multiple-meta'}, loop.description),
+				el('span', {class: 'multiple-meta'}, cleanDescriptions[loopIdx] ?? ''),
 			),
 		)
 		const host = el('div', {
@@ -109,13 +144,13 @@ export function renderLoopModel(
 		hosts.push(host)
 
 		resizeScope.observe(host, w => drawLoop(host, loop, Math.max(260, w)))
-	}
+	})
 
 	const layout = el('div', {class: 'info-layout'}, grid, panel.root)
 	const foot = el(
 		'footer',
 		{class: 'plate-foot'},
-		'Reading key: Solid grey arrows mark forward transitions; dashed amber arrows mark repeat cycles; green arrows mark loop exits. Hover, focus, or click any numbered phase or arrow to read its canonical specification.',
+		'Solid grey arrows advance the cycle, dashed amber arrows loop back to repeat, and green arrows exit. Select any numbered phase or arrow to read its spec.',
 	)
 	container.append(layout, foot)
 	wireInfoPanel(hosts, panel)
@@ -162,7 +197,7 @@ function drawLoop(host: HTMLElement, loop: LoopModelLoop, width: number): void {
 		.attr('height', size)
 		.attr('role', 'img')
 		.attr('aria-label', `${loop.name}: ${n} phases, ${loop.edges.length} edges`)
-	svg.append('title').text(`${loop.name} (documented model)`)
+	svg.append('title').text(`${loop.name} (reference blueprint)`)
 
 	const defs = svg.append('defs')
 	for (const k of ['next', 'repeat', 'exit']) {

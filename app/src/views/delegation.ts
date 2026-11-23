@@ -147,7 +147,7 @@ export function renderDelegation(
 	const foot = el(
 		'footer',
 		{class: 'plate-foot'},
-		`Reading key: ${fmtInt(all.filter(d => d.data.kind === 'task').length)} tasks and ${fmtInt(all.filter(d => d.data.kind === 'worker-thread').length)} worker threads. Dashed curves mark worker dispatches. Hover, focus, or click any node to inspect its full dispatch prompt.`,
+		`${fmtInt(all.filter(d => d.data.kind === 'task').length)} tasks and ${fmtInt(all.filter(d => d.data.kind === 'worker-thread').length)} worker threads. Dashed curves mark worker dispatches. Select any node to read the full prompt that launched it.`,
 	)
 	container.append(legend, layout, foot)
 	wireInfoPanel([host], panel)

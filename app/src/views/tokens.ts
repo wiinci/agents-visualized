@@ -138,7 +138,7 @@ export function renderTokens(
 	const fmtValCompact = (n: number): string =>
 		metric === 'cost' ? `~${fmtCost(n)}` : `≈${fmtCompact(n)}`
 	const unitLabel =
-		metric === 'cost' ? 'cost (est., assumed rate)' : 'tokens (est.)'
+		metric === 'cost' ? 'modeled cost' : 'estimated tokens'
 	const threadFull = (tid: string): string => threadNames.get(tid)?.full ?? tid
 	const threadShort = (tid: string): string =>
 		threadNames.get(tid)?.short ?? tid
@@ -166,7 +166,7 @@ export function renderTokens(
 			class: 'seg-btn',
 			'aria-pressed': String(metric === 'tokens'),
 		},
-		'Tokens (est.)',
+		'Tokens',
 	)
 	const btnCost = el(
 		'button',
@@ -176,7 +176,7 @@ export function renderTokens(
 			class: 'seg-btn',
 			'aria-pressed': String(metric === 'cost'),
 		},
-		'Assumed cost',
+		'Modeled cost',
 	)
 	btnTok.onclick = () => {
 		if (metric === 'tokens') return
@@ -269,10 +269,10 @@ export function renderTokens(
 				: cellContent(key),
 		defaultContent: () => ({
 			kicker: `${fmtInt(turns.length)} turns · ${fmtInt(agents.length)} agents`,
-			title: 'Grand totals (estimated)',
+			title: 'Trace totals',
 			stats: [
 				['Est. tokens', `≈${fmtCompact(totalTokensAll)}`],
-				['Assumed cost', fmtCost(totalCostAll)],
+				['Modeled cost', fmtCost(totalCostAll)],
 			],
 			rows: [
 				...agents.map((a): [string, string] => {
@@ -285,7 +285,7 @@ export function renderTokens(
 					]
 				}),
 				['default rate', `${fmtRate(rateFor(undefined))} (editable)`],
-				['method', 'chars ÷ 4 per step; illustrative cost only'],
+				['basis', 'chars ÷ 4; editable rates'],
 			],
 		}),
 	})
@@ -295,7 +295,7 @@ export function renderTokens(
 	const foot = el(
 		'footer',
 		{class: 'plate-foot'},
-		`Methodology: Tokens are estimated at characters ÷ 4 on every step and summed. Cost multiplies estimated tokens by editable assumed rates (${fmtRate(rateFor(undefined))} default) — never measured provider billing. Heatmap shading uses a square-root scale so smaller turns remain legible beside outlier worker runs.`,
+		'Cell shading uses a square-root scale so smaller turns stay readable next to heavy worker runs. Open the rate editor above to test different pricing assumptions.',
 	)
 	container.append(toolbar, layout, foot)
 
@@ -321,13 +321,13 @@ export function renderTokens(
 				if (v === 0)
 					rows.splice(1, 0, [
 						'note',
-						`no observed steps by ${agentDisplayName(a)} in this turn`,
+						`no steps by ${agentDisplayName(a)} in this turn`,
 					])
 				return {
 					kicker: `Turn cell · ${agentDisplayName(a)}`,
 					title: turnName(t),
 					stats: [
-						[metric === 'cost' ? 'Assumed cost' : 'Est. tokens', fmtVal(shown)],
+						[metric === 'cost' ? 'Modeled cost' : 'Est. tokens', fmtVal(shown)],
 						['Steps', fmtInt(t.steps)],
 					],
 					rows,
@@ -378,8 +378,8 @@ export function renderTokens(
 			'h3',
 			{class: 'tok-subhead'},
 			metric === 'cost'
-				? 'Turn × agent matrix — assumed cost'
-				: 'Turn × agent matrix — estimated tokens',
+				? 'Modeled cost by turn and agent'
+				: 'Estimated tokens by turn and agent',
 		),
 		el('div', {class: 'tok-legend-row'}, heatLegend),
 		heatHost,
@@ -526,8 +526,8 @@ export function renderTokens(
 			'h3',
 			{class: 'tok-subhead'},
 			mode === 'multiples'
-				? 'Cumulative trajectory — per agent (shared scale)'
-				: 'Cumulative trajectory — overlaid lines',
+				? 'Cumulative total by agent (shared scale)'
+				: 'Cumulative total, overlaid',
 		),
 		lineHost,
 	)
