@@ -47,7 +47,7 @@ interface ProximityTarget {
 
 const shortLabel = (stage: string): string =>
 	stage.startsWith('tool:') ? stage.slice(5) : stageLabel(stage)
-const CHAR_W = 7.0
+const CHAR_W = 8.2
 
 const METRIC_LABEL: Record<Metric, string> = {
 	context: 'context size',
@@ -368,10 +368,10 @@ export function renderSankey(
 			.range([0, R_MAX])
 		const values = max > 0 ? [max, max / 4, max / 16] : []
 		const cx = R_MAX + 2
-		const base = R_MAX * 2 + 4
+		const base = R_MAX * 2 + 12
 		const labelX = R_MAX * 2 + 16
-		const w = values.length ? labelX + 78 : 110
-		const h = base + 4
+		const w = values.length ? labelX + 94 : 116
+		const h = base + 6
 		const svg = d3
 			.create('svg')
 			.attr('width', w)
@@ -379,7 +379,7 @@ export function renderSankey(
 			.attr('viewBox', `0 0 ${w} ${h}`)
 			.attr('aria-hidden', 'true')
 		const g = svg.append('g').attr('class', 'legend-circles')
-		const labelYs = [6, 17, 28]
+		const labelYs = [8, 22, 36]
 		values.forEach((v, i) => {
 			const rad = r(v)
 			const topY = base - rad * 2
@@ -395,7 +395,7 @@ export function renderSankey(
 				.attr('y2', ly)
 			g.append('text')
 				.attr('x', labelX)
-				.attr('y', ly + 3)
+				.attr('y', ly + 4)
 				.text(`${fmtCompact(v)}${i === 0 ? ' chars' : ''}`)
 		})
 		if (!values.length)

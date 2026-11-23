@@ -182,8 +182,8 @@ export function renderContext(
 		const draw = (width: number): void => {
 			lastW = width
 			host.replaceChildren()
-			const height = 215
-			const m = {top: 14, right: 12, bottom: 28, left: 54}
+			const height = 236
+			const m = {top: 24, right: 14, bottom: 40, left: 58}
 			const yDomainMax = sharedScale ? globalMax : localMax
 			const x = d3
 				.scaleLinear()
@@ -215,7 +215,7 @@ export function renderContext(
 				.call(
 					d3
 						.axisBottom(x)
-						.ticks(Math.min(8, t.steps.length))
+						.ticks(Math.min(7, t.steps.length))
 						.tickFormat(d => `#${d}`),
 				)
 			svg
@@ -232,14 +232,14 @@ export function renderContext(
 				.append('text')
 				.attr('class', 'axis-label')
 				.attr('x', width - m.right)
-				.attr('y', height - 5)
+				.attr('y', height - 4)
 				.attr('text-anchor', 'end')
 				.text('step →')
 			svg
 				.append('text')
 				.attr('class', 'axis-label')
 				.attr('x', m.left)
-				.attr('y', m.top - 4)
+				.attr('y', m.top - 8)
 				.text(sharedScale ? 'context chars (shared)' : 'context chars (local)')
 
 			const bounds: number[] = []

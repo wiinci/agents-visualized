@@ -279,22 +279,22 @@ export function renderHierarchy(
 		const label = cell
 			.append('text')
 			.attr('x', 6)
-			.attr('y', 14)
+			.attr('y', 16)
 			.attr('class', d => `ic-label${isInverted(d) ? ' is-inv' : ''}`)
 		label.append('tspan').text(d => shortNameOf(d.data))
 		label
 			.append('tspan')
 			.attr('class', d => `ic-sub${isInverted(d) ? ' is-inv' : ''}`)
 			.attr('x', 6)
-			.attr('dy', 13)
+			.attr('dy', 15)
 			.text(d => {
 				const chars = d.data.meta?.chars ?? d.value ?? 0
 				return `${fmtCompact(chars)} · ${fmtPct(d.value ?? chars, totalChars)}`
 			})
 
 		label.style('display', d =>
-			y(Math.min(d.x1, zoomRoot.x1)) - y(Math.max(d.x0, zoomRoot.x0)) < 30 ||
-			d.y1 - d.y0 < 78
+			y(Math.min(d.x1, zoomRoot.x1)) - y(Math.max(d.x0, zoomRoot.x0)) < 35 ||
+			d.y1 - d.y0 < 82
 				? 'none'
 				: null,
 		)

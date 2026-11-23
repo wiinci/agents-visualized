@@ -11,7 +11,8 @@
    --bg-2: light-dark(#f2eee6, #1b1916);
    --bg-3: light-dark(#e7e1d5, #25221d);
    --fg: light-dark(#181614, #ece9e2);
-   --fg-muted: light-dark(#5c574f, #a49e93);
+   --fg-sub: light-dark(#38342e, #cdc7bd);
+   --fg-muted: light-dark(#4f4a43, #aba499);
    --border: light-dark(#d8d2c6, #312e29);
    --rule-strong: light-dark(#181614, #ece9e2);
    --accent: light-dark(#a63223, #e06d5c);
@@ -22,26 +23,39 @@
    --shadow: 0 10px 30px light-dark(rgb(24 22 20 / 0.1), rgb(0 0 0 / 0.55));
    --sankey-line: light-dark(#cbc4b7, #443f38);
 
-   /* Fluid type + space (typography + fluid-scaling guides):
-     all endpoints in rem, every max <= 2.5 * min for WCAG 1.4.4 200% zoom.
-     Tuned for Input's generous x-height and open character widths. */
-   --step--1: clamp(0.75rem, 0.72rem + 0.12vw, 0.82rem);
-   --step-0: clamp(0.88rem, 0.85rem + 0.14vw, 0.95rem);
-   --step-prose: clamp(0.95rem, 0.91rem + 0.16vw, 1.04rem);
-   --step-1: clamp(1.12rem, 1.02rem + 0.38vw, 1.38rem);
-   --step-2: clamp(1.4rem, 1.15rem + 0.8vw, 1.95rem);
-   --step-3: clamp(1.85rem, 1.35rem + 1.65vw, 2.95rem);
-   --space: clamp(0.9rem, 0.55rem + 1.1vw, 1.75rem);
+   /* Modular fluid type scale (~1.22 ratio, 12px / 0.75rem hard floor) + 0.5rem
+      vertical rhythm (typography + fluid-scaling guides: rem endpoints,
+      max <= 2.5 * min for WCAG 1.4.4 200% zoom). */
+   --rhythm: 0.5rem;
+   --chart-xs: 0.75rem;
+   /* 12px — floor for dense axis ticks & micro-labels */
+   --chart-sm: 0.8125rem;
+   /* 13px — chart subtitles, cell values, loop edges */
+   --chart-md: 0.875rem;
+   /* 14px — primary chart & diagram labels */
+   --step--1: clamp(0.84rem, 0.82rem + 0.1vw, 0.9rem);
+   --step-0: clamp(0.96rem, 0.93rem + 0.14vw, 1.03rem);
+   --step-prose: clamp(1.06rem, 1.01rem + 0.22vw, 1.18rem);
+   --step-1: clamp(1.22rem, 1.12rem + 0.36vw, 1.44rem);
+   --step-2: clamp(1.5rem, 1.25rem + 0.78vw, 2.05rem);
+   --step-3: clamp(2.1rem, 1.55rem + 1.8vw, 3.3rem);
+   --space: clamp(1rem, 0.6rem + 1.1vw, 1.85rem);
    --spread-max: 1380px;
    --nav-height: 3.25rem;
    --radius: 4px;
 
-   /* Three disciplined typographic voices from the Input family (https://input.djr.com/).
-      Prefers Input Serif / Input Sans when installed, and uses the locally installed
-      Input Mono width hierarchy (Normal, Narrow, Condensed) from Font Book. */
-   --font-serif: "Input Serif", "InputSerif", "Input Mono", "InputMono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-   --font: "Input Sans", "InputSans", "Input Mono Narrow", "InputMonoNarrow", "Input Mono", "InputMono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-   --mono: "Input Mono Condensed", "InputMonoCondensed", "Input Mono", "InputMono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+   /* Disciplined Input super-family hierarchy (https://input.djr.com/) with
+      proper non-local editorial fallbacks (never monospace for prose/headings).
+      Input ships weights 100/200/300/400/500/700/900 (no 600) and four widths
+      (Normal, Narrow, Condensed, Compressed); numerals are natively tabular. */
+   --font-serif: "Input Serif", "InputSerif", Charter, "Iowan Old Style", Georgia, serif;
+   --font-serif-narrow: "Input Serif Narrow", "InputSerifNarrow", "Input Serif", Charter, Georgia, serif;
+   --font-serif-cond: "Input Serif Condensed", "InputSerifCondensed", "Input Serif Narrow", Charter, Georgia, serif;
+   --font: "Input Sans", "InputSans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+   --font-narrow: "Input Sans Narrow", "InputSansNarrow", "Input Sans", system-ui, -apple-system, sans-serif;
+   --font-cond: "Input Sans Condensed", "InputSansCondensed", "Input Sans Narrow", system-ui, -apple-system, sans-serif;
+   --mono: "Input Mono Condensed", "InputMonoCondensed", "Input Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+   --mono-comp: "Input Mono Compressed", "InputMonoCompressed", "Input Mono Condensed", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @supports not (color: light-dark(#000, #fff)) {
@@ -51,7 +65,8 @@
          --bg-2: #1b1916;
          --bg-3: #25221d;
          --fg: #ece9e2;
-         --fg-muted: #a49e93;
+         --fg-sub: #cdc7bd;
+         --fg-muted: #aba499;
          --border: #312e29;
          --rule-strong: #ece9e2;
          --accent: #e06d5c;
@@ -71,9 +86,8 @@
 
 html {
    font-family: var(--font);
-   font-size: var(--step-0);
-   font-size-adjust: from-font;
-   line-height: 1.55;
+   font-size: 100%;
+   line-height: 1.5;
    -webkit-text-size-adjust: 100%;
    scroll-padding-block-start: calc(var(--nav-height) + 1.25rem);
 }
@@ -88,6 +102,8 @@ body {
    margin: 0;
    background: var(--bg);
    color: var(--fg);
+   font-size: var(--step-0);
+   line-height: 1.5;
    min-block-size: 100dvh;
    text-align: start;
    font-kerning: normal;
@@ -113,27 +129,27 @@ li,
 }
 
 h1 {
-   font-family: var(--font-serif);
+   font-family: var(--font-serif-narrow);
    font-size: var(--step-3);
-   font-weight: 700;
-   letter-spacing: -0.03em;
-   line-height: 1.1;
+   font-weight: 500;
+   letter-spacing: -0.02em;
+   line-height: 1.06;
    margin: 0 0 0.35em;
 }
 
 h2 {
-   font-family: var(--font-serif);
+   font-family: var(--font-serif-narrow);
    font-size: var(--step-2);
-   font-weight: 700;
-   letter-spacing: -0.02em;
-   line-height: 1.18;
+   font-weight: 500;
+   letter-spacing: -0.015em;
+   line-height: 1.16;
    margin: 0 0 0.35em;
 }
 
 h3 {
-   font-family: var(--font);
+   font-family: var(--font-narrow);
    font-size: var(--step-0);
-   font-weight: 600;
+   font-weight: 500;
    line-height: 1.3;
    margin: 1.5em 0 0.5em;
 }
@@ -175,7 +191,7 @@ a:hover {
 
 .is-error {
    color: var(--err);
-   font-weight: 600;
+   font-weight: 500;
 }
 
 .visually-hidden {
@@ -287,10 +303,10 @@ svg path[tabindex]:focus-visible {
    align-items: center;
    gap: 0.5rem;
    font-family: var(--mono);
-   font-size: 0.74rem;
-   letter-spacing: 0.08em;
+   font-size: var(--chart-xs);
+   letter-spacing: 0.06em;
    text-transform: uppercase;
-   color: var(--fg-muted);
+   color: var(--fg-sub);
 }
 
 .dateline-dot {
@@ -354,33 +370,50 @@ svg path[tabindex]:focus-visible {
 }
 
 .masthead-kicker {
-   font-size: 0.74rem;
-   font-weight: 600;
-   letter-spacing: 0.11em;
+   font-family: var(--font-cond);
+   font-size: 0.84rem;
+   font-weight: 500;
+   letter-spacing: 0.1em;
    text-transform: uppercase;
    color: var(--accent);
-   margin-block: 0 0.6rem;
+   margin-block: 0 var(--rhythm);
 }
 
 .lede {
-   font-family: var(--font-serif);
-   font-size: clamp(0.98rem, 0.92rem + 0.25vw, 1.14rem);
-   line-height: 1.55;
-   color: var(--fg-muted);
-   max-inline-size: 58ch;
+   font-family: var(--font-serif-narrow);
+   font-size: clamp(1.12rem, 1.04rem + 0.3vw, 1.32rem);
+   font-weight: 400;
+   line-height: 1.5;
+   color: var(--fg-sub);
+   max-inline-size: 56ch;
    margin-block: 0;
 }
 
 .masthead-aside {
    border-inline-start: 1px solid var(--border);
-   padding-inline-start: 1rem;
+   padding-inline-start: 1.1rem;
+   font-family: var(--font-narrow);
    font-size: var(--step--1);
-   color: var(--fg-muted);
+   line-height: 1.5;
+   color: var(--fg-sub);
    margin: 0;
 }
 
 .masthead-aside p {
-   margin-block: 0 0.35em;
+   margin-block: 0 0.4em;
+}
+
+.masthead-aside p:first-child strong {
+   font-family: var(--font-cond);
+   font-weight: 500;
+   letter-spacing: 0.06em;
+   text-transform: uppercase;
+   font-size: 0.82rem;
+   color: var(--fg);
+}
+
+.masthead-aside p:not(:first-child) {
+   font-style: italic;
 }
 
 .masthead-aside p:last-child {
@@ -410,34 +443,37 @@ svg path[tabindex]:focus-visible {
 /* Executive Key Figures strip (Tufte: de-boxed, crisp 2px top rule) */
 .kpis {
    display: grid;
-   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-   gap: 1rem 1.75rem;
+   grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+   gap: 1.15rem 1.75rem;
    margin-block: clamp(1.5rem, 3vw, 2.25rem) 0;
    border-block-start: 2px solid var(--rule-strong);
    border-block-end: 1px solid var(--border);
-   padding-block: 1.1rem;
+   padding-block: 1.2rem;
 }
 
 .kpi-value {
-   font-family: var(--font-serif);
-   font-size: clamp(1.25rem, 1.05rem + 0.65vw, 1.7rem);
-   font-weight: 700;
-   line-height: 1.12;
+   font-family: var(--font-serif-cond);
+   font-size: clamp(1.6rem, 1.25rem + 0.95vw, 2.25rem);
+   font-weight: 400;
+   line-height: 1.08;
    font-variant-numeric: tabular-nums;
-   letter-spacing: -0.025em;
+   letter-spacing: -0.02em;
 }
 
 .kpi-label {
-   margin-block-start: 0.25rem;
-   font-size: 0.72rem;
+   margin-block-start: 0.3rem;
+   font-family: var(--font-cond);
+   font-size: 0.82rem;
    letter-spacing: 0.08em;
    text-transform: uppercase;
-   color: var(--fg-muted);
-   font-weight: 600;
+   color: var(--fg-sub);
+   font-weight: 500;
 }
 
 .kpi-sub {
-   margin-block-start: 0.15rem;
+   margin-block-start: 0.2rem;
+   font-family: var(--font-narrow);
+   font-style: italic;
    color: var(--fg-muted);
    font-size: var(--step--1);
 }
@@ -486,7 +522,9 @@ svg path[tabindex]:focus-visible {
    align-items: baseline;
    gap: 0.4em;
    padding: 0.75em 0.65em;
+   font-family: var(--font-narrow);
    font-size: var(--step--1);
+   font-weight: 400;
    color: var(--fg-muted);
    text-decoration: none;
    white-space: nowrap;
@@ -496,24 +534,27 @@ svg path[tabindex]:focus-visible {
 
 .chapter-link-num {
    font-family: var(--mono);
-   font-size: 0.72rem;
-   opacity: 0.7;
+   font-size: var(--chart-xs);
+   font-weight: 400;
+   opacity: 0.78;
 }
 
 .chapter-link:hover {
    color: var(--fg);
 }
 
+/* Keep active weight at 400 so Input's 400→500 width step never shifts sibling nav items on scrollspy. */
 .chapter-link:is(:target-current, .target-current),
 .chapter-link[aria-current="true"] {
    color: var(--fg);
-   font-weight: 600;
+   font-weight: 400;
    border-block-end-color: var(--accent);
 }
 
 .chapter-link:is(:target-current, .target-current) .chapter-link-num,
 .chapter-link[aria-current="true"] .chapter-link-num {
    color: var(--accent);
+   font-weight: 500;
    opacity: 1;
 }
 
@@ -554,40 +595,47 @@ svg path[tabindex]:focus-visible {
 
 .plate-head {
    display: grid;
-   gap: 0.4rem;
-   max-inline-size: 70ch;
-   margin-block-end: clamp(1.1rem, 2.2vw, 1.75rem);
+   gap: calc(var(--rhythm) * 1.1);
+   max-inline-size: 72ch;
+   margin-block-end: clamp(1.25rem, 2.4vw, 2rem);
 }
 
 .plate-kicker {
    display: inline-flex;
    align-items: center;
    gap: 0.6em;
-   font-size: 0.74rem;
-   font-weight: 600;
-   letter-spacing: 0.1em;
+   font-family: var(--font-cond);
+   font-size: var(--chart-sm);
+   font-weight: 500;
+   letter-spacing: 0.08em;
    text-transform: uppercase;
-   color: var(--fg-muted);
+   color: var(--fg-sub);
 }
 
 .plate-kicker-num {
    color: var(--accent);
    font-family: var(--mono);
+   font-weight: 500;
 }
 
 .plate-kicker-tag {
-   font-family: var(--mono);
-   font-size: 0.7rem;
-   color: var(--fg-muted);
+   font-family: var(--font-narrow);
+   font-style: italic;
+   font-weight: 400;
+   text-transform: none;
+   letter-spacing: 0.01em;
+   font-size: var(--chart-sm);
+   color: var(--fg-sub);
    padding-inline-start: 0.6em;
    border-inline-start: 1px solid var(--border);
 }
 
 .plate-deck {
-   font-family: var(--font-serif);
+   font-family: var(--font-serif-narrow);
    font-size: var(--step-prose);
-   line-height: 1.6;
-   color: var(--fg-muted);
+   font-weight: 400;
+   line-height: 1.56;
+   color: var(--fg-sub);
    max-inline-size: 62ch;
    margin: 0;
 }
@@ -597,11 +645,12 @@ svg path[tabindex]:focus-visible {
 }
 
 .plate-foot {
-   margin-block-start: 1rem;
-   padding-block-start: 0.65rem;
+   margin-block-start: calc(var(--rhythm) * 2.5);
+   padding-block-start: calc(var(--rhythm) * 1.5);
    border-block-start: 1px solid color-mix(in oklab, var(--border) 65%, transparent);
-   max-inline-size: 74ch;
-   color: var(--fg-muted);
+   max-inline-size: 68ch;
+   font-family: var(--font-narrow);
+   color: var(--fg-sub);
    font-size: var(--step--1);
    line-height: 1.5;
 }
@@ -614,15 +663,17 @@ svg path[tabindex]:focus-visible {
 }
 
 .subplate-title {
-   font-family: var(--font-serif);
+   font-family: var(--font-serif-narrow);
    font-size: var(--step-1);
-   font-weight: 700;
-   margin: 0 0 0.25em;
+   font-weight: 500;
+   margin: 0 0 var(--rhythm);
 }
 
 .view-note {
-   max-inline-size: 72ch;
-   color: var(--fg-muted);
+   max-inline-size: 64ch;
+   font-family: var(--font-narrow);
+   font-style: italic;
+   color: var(--fg-sub);
    font-size: var(--step--1);
 }
 
@@ -681,6 +732,7 @@ svg path[tabindex]:focus-visible {
 
 .seg-btn {
    font: inherit;
+   font-family: var(--font-narrow);
    font-size: var(--step--1);
    padding: 0.25em 0.65em;
    border: 0;
@@ -702,6 +754,7 @@ svg path[tabindex]:focus-visible {
 
 /* Breadcrumbs (breadcrumbs guide) */
 .breadcrumb {
+   font-family: var(--font-narrow);
    font-size: var(--step--1);
 }
 
@@ -749,7 +802,7 @@ svg path[tabindex]:focus-visible {
 
 .breadcrumb [aria-current="page"] {
    color: var(--fg);
-   font-weight: 600;
+   font-weight: 500;
    text-decoration: none;
    cursor: default;
 }
@@ -759,6 +812,7 @@ svg path[tabindex]:focus-visible {
    display: flex;
    flex-wrap: wrap;
    gap: 0.4em 1.15em;
+   font-family: var(--font-narrow);
    font-size: var(--step--1);
    color: var(--fg-muted);
    margin-block: 0.2rem 0.75rem;
@@ -831,23 +885,26 @@ svg path[tabindex]:focus-visible {
 }
 
 .multiple figcaption {
-   margin-block-end: 0.6rem;
+   margin-block-end: 0.7rem;
    font-size: var(--step--1);
-   line-height: 1.4;
+   line-height: 1.45;
 }
 
 .multiple-title {
-   font-family: var(--font-serif);
-   font-size: 1rem;
-   font-weight: 700;
+   font-family: var(--font-serif-narrow);
+   font-size: var(--step-1);
+   font-weight: 500;
+   line-height: 1.24;
    color: var(--fg);
 }
 
 .multiple-meta {
    display: block;
-   margin-block-start: 0.15rem;
-   font-size: var(--step--1);
-   color: var(--fg-muted);
+   margin-block-start: 0.25rem;
+   font-family: var(--font-narrow);
+   font-size: var(--chart-sm);
+   line-height: 1.45;
+   color: var(--fg-sub);
    font-variant-numeric: tabular-nums;
 }
 
@@ -871,15 +928,16 @@ svg path[tabindex]:focus-visible {
 }
 
 .summary-block h3 {
-   font-family: var(--font-serif);
+   font-family: var(--font-serif-narrow);
    font-size: var(--step-1);
-   font-weight: 700;
-   margin: 0 0 0.6rem;
+   font-weight: 500;
+   margin: 0 0 0.75rem;
 }
 
 .data {
    border-collapse: collapse;
    inline-size: 100%;
+   font-family: var(--font-narrow);
    font-size: var(--step--1);
    font-variant-numeric: tabular-nums;
 }
@@ -887,15 +945,16 @@ svg path[tabindex]:focus-visible {
 .data th,
 .data td {
    text-align: start;
-   padding: 0.5em 0.6em;
+   padding: 0.55em 0.65em;
    border-block-end: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
    vertical-align: top;
 }
 
 .data thead th {
-   color: var(--fg-muted);
-   font-weight: 600;
-   font-size: 0.72rem;
+   color: var(--fg-sub);
+   font-family: var(--font-cond);
+   font-weight: 500;
+   font-size: var(--chart-xs);
    letter-spacing: 0.06em;
    text-transform: uppercase;
    border-block-end: 1.5px solid var(--rule-strong);
@@ -945,9 +1004,9 @@ svg path[tabindex]:focus-visible {
 .badge {
    display: inline-block;
    font-family: var(--mono);
-   font-size: 0.7rem;
-   letter-spacing: 0.04em;
-   padding: 0.1em 0.4em;
+   font-size: var(--chart-xs);
+   letter-spacing: 0.03em;
+   padding: 0.1em 0.45em;
    border-radius: 2px;
    background: color-mix(in oklab, var(--badge, var(--fg-muted)) 12%, transparent);
    color: var(--badge, var(--fg-muted));
@@ -1007,18 +1066,18 @@ svg path[tabindex]:focus-visible {
 
 .sankey-panel h3 {
    margin: 0;
-   font-family: var(--mono);
-   font-size: 0.7rem;
-   letter-spacing: 0.09em;
+   font-family: var(--font-cond);
+   font-size: var(--chart-xs);
+   letter-spacing: 0.08em;
    text-transform: uppercase;
-   color: var(--fg-muted);
-   font-weight: 600;
+   color: var(--fg-sub);
+   font-weight: 500;
 }
 
 .marginalia-pin {
    font-family: var(--mono);
-   font-size: 0.68rem;
-   letter-spacing: 0.05em;
+   font-size: var(--chart-xs);
+   letter-spacing: 0.04em;
    text-transform: uppercase;
    padding: 0.15em 0.5em;
    border: 1px solid var(--accent);
@@ -1046,23 +1105,23 @@ svg path[tabindex]:focus-visible {
 
 .sankey-panel-head {
    display: grid;
-   gap: 0.2rem;
-   margin-block-end: 0.7rem;
+   gap: 0.25rem;
+   margin-block-end: 0.75rem;
 }
 
 .marginalia-kicker {
    font-family: var(--mono);
-   font-size: 0.68rem;
-   letter-spacing: 0.07em;
+   font-size: var(--chart-xs);
+   letter-spacing: 0.05em;
    text-transform: uppercase;
-   color: var(--fg-muted);
+   color: var(--fg-sub);
 }
 
 .sankey-panel-title {
-   font-family: var(--font-serif);
-   font-size: 1.1rem;
-   font-weight: 700;
-   line-height: 1.25;
+   font-family: var(--font-serif-narrow);
+   font-size: var(--step-1);
+   font-weight: 500;
+   line-height: 1.24;
    overflow-wrap: anywhere;
 }
 
@@ -1070,62 +1129,67 @@ svg path[tabindex]:focus-visible {
 .marginalia-stats {
    display: grid;
    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-   gap: 0.6rem 1rem;
-   padding-block: 0.6rem;
-   margin-block-end: 0.65rem;
+   gap: 0.65rem 1rem;
+   padding-block: 0.65rem;
+   margin-block-end: 0.75rem;
    border-block: 1px solid var(--border);
 }
 
 .marginalia-stat-val {
-   font-family: var(--font-serif);
-   font-size: 1.18rem;
-   font-weight: 700;
-   line-height: 1.15;
+   font-family: var(--font-serif-cond);
+   font-size: 1.45rem;
+   font-weight: 400;
+   line-height: 1.1;
    font-variant-numeric: tabular-nums;
 }
 
 .marginalia-stat-lab {
-   font-size: 0.7rem;
-   letter-spacing: 0.05em;
+   font-family: var(--font-cond);
+   font-size: var(--chart-xs);
+   font-weight: 500;
+   letter-spacing: 0.06em;
    text-transform: uppercase;
-   color: var(--fg-muted);
-   margin-block-start: 0.1rem;
+   color: var(--fg-sub);
+   margin-block-start: 0.15rem;
 }
 
 .sankey-panel-rows {
    display: grid;
    grid-template-columns: max-content 1fr;
-   gap: 0.32em 0.85em;
+   gap: 0.35em 0.9em;
    margin: 0;
 }
 
 .sankey-panel-rows dt {
+   font-family: var(--font-narrow);
    color: var(--fg-muted);
    white-space: nowrap;
-   font-size: 0.78rem;
+   font-size: var(--chart-sm);
 }
 
 .sankey-panel-rows dd {
    margin: 0;
+   font-family: var(--font-narrow);
    overflow-wrap: anywhere;
    font-variant-numeric: tabular-nums;
-   font-size: 0.82rem;
+   font-size: var(--step--1);
 }
 
 .sankey-panel-textlabel {
-   margin-block: 0.8rem 0;
-   font-family: var(--mono);
-   font-size: 0.7rem;
+   margin-block: 0.85rem 0;
+   font-family: var(--font-cond);
+   font-size: var(--chart-xs);
+   font-weight: 500;
    letter-spacing: 0.06em;
    text-transform: uppercase;
-   color: var(--fg-muted);
+   color: var(--fg-sub);
 }
 
 .sankey-panel-text {
    display: block;
    white-space: pre-wrap;
-   font-family: var(--font);
-   font-size: 0.8rem;
+   font-family: var(--font-narrow);
+   font-size: var(--chart-sm);
    line-height: 1.55;
    max-block-size: 13lh;
    overflow: auto;
@@ -1138,7 +1202,7 @@ svg path[tabindex]:focus-visible {
 
 .sankey-panel-text.mono {
    font-family: var(--mono);
-   font-size: 0.78rem;
+   font-size: var(--chart-sm);
 }
 
 .table-scroll {
@@ -1165,9 +1229,9 @@ svg path[tabindex]:focus-visible {
    gap: 0.55ch;
    padding-block: 0.85rem;
    cursor: pointer;
-   font-family: var(--font-serif);
+   font-family: var(--font-serif-narrow);
    font-size: var(--step-1);
-   font-weight: 700;
+   font-weight: 500;
 }
 
 .colophon-details > summary::-webkit-details-marker {
@@ -1323,11 +1387,12 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .sankey-header {
-   font-family: var(--mono);
-   font-size: 10.5px;
-   letter-spacing: 0.06em;
+   font-family: var(--font-cond);
+   font-size: var(--chart-xs);
+   font-weight: 500;
+   letter-spacing: 0.07em;
    text-transform: uppercase;
-   fill: var(--fg-muted);
+   fill: var(--fg-sub);
    pointer-events: none;
 }
 
@@ -1388,14 +1453,15 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .sankey-label {
-   font-family: var(--mono);
-   font-size: 11.5px;
+   font-family: var(--font-cond);
+   font-size: var(--chart-md);
+   font-weight: 400;
    fill: var(--fg);
    pointer-events: none;
 }
 
 .sankey-svg.is-highlighting .sankey-node.is-hi .sankey-label {
-   font-weight: 600;
+   font-weight: 500;
 }
 
 .sankey-toolbar {
@@ -1403,9 +1469,9 @@ svg path.sankey-linkhit:focus-visible {
    flex-wrap: wrap;
    align-items: center;
    gap: 0.65rem 1.4rem;
-   margin-block: 0.2rem 0.85rem;
+   margin-block: 0.25rem 0.9rem;
    font-size: var(--step--1);
-   color: var(--fg-muted);
+   color: var(--fg-sub);
 }
 
 .sankey-metric {
@@ -1431,9 +1497,9 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .legend-circles text {
-   font-family: var(--mono);
-   font-size: 10px;
-   fill: var(--fg-muted);
+   font-family: var(--mono-comp);
+   font-size: var(--chart-xs);
+   fill: var(--fg-sub);
 }
 
 .zoom-controls {
@@ -1484,7 +1550,8 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .ic-label {
-   font-size: 11px;
+   font-family: var(--font-cond);
+   font-size: var(--chart-sm);
    fill: var(--fg);
    pointer-events: none;
    font-weight: 500;
@@ -1495,20 +1562,21 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .ic-sub {
-   fill: var(--fg-muted);
-   font-size: 10px;
+   font-family: var(--mono-comp);
+   fill: var(--fg-sub);
+   font-size: var(--chart-xs);
    font-weight: 400;
 }
 
 .ic-sub.is-inv {
-   fill: rgb(250 248 244 / 0.82);
+   fill: rgb(250 248 244 / 0.88);
 }
 
 /* ── Context growth ──────────────────────────────────────────────────── */
 .axis text {
-   fill: var(--fg-muted);
-   font-size: 10px;
-   font-family: var(--mono);
+   fill: var(--fg-sub);
+   font-size: var(--chart-xs);
+   font-family: var(--mono-comp);
 }
 
 .axis line,
@@ -1517,9 +1585,10 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .axis-label {
-   fill: var(--fg-muted);
-   font-size: 10px;
-   font-family: var(--mono);
+   fill: var(--fg-sub);
+   font-size: var(--chart-xs);
+   font-family: var(--font-cond);
+   font-weight: 500;
 }
 
 .turn-rule {
@@ -1556,18 +1625,20 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .tree-glyph {
-   font-size: 11px;
+   font-size: var(--chart-xs);
 }
 
 .tree-label {
-   font-size: 12px;
+   font-family: var(--font-cond);
+   font-size: var(--chart-md);
+   font-weight: 400;
    fill: var(--fg);
 }
 
 .tree-sub {
-   fill: var(--fg-muted);
-   font-size: 10.5px;
-   font-family: var(--mono);
+   fill: var(--fg-sub);
+   font-size: var(--chart-sm);
+   font-family: var(--mono-comp);
 }
 
 .tree-label,
@@ -1602,13 +1673,14 @@ svg path.sankey-linkhit:focus-visible {
 
 .lm-num {
    font-family: var(--mono);
-   font-size: 11.5px;
-   font-weight: 600;
+   font-size: var(--chart-xs);
+   font-weight: 500;
    fill: var(--fg);
 }
 
 .lm-label {
-   font-size: 11.5px;
+   font-family: var(--font-cond);
+   font-size: var(--chart-sm);
    fill: var(--fg);
 }
 
@@ -1645,27 +1717,29 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .lm-edge-label {
-   font-family: var(--mono);
-   font-size: 9.5px;
+   font-family: var(--font-serif-narrow);
+   font-style: italic;
+   font-size: var(--chart-xs);
    fill: #9a4a12;
    pointer-events: none;
 }
 
 /* ── Tokens & cost ───────────────────────────────────────────────────── */
 .tok-chart .axis text {
-   font-family: var(--mono);
-   font-size: 10px;
-   fill: var(--fg-muted);
+   font-family: var(--mono-comp);
+   font-size: var(--chart-xs);
+   fill: var(--fg-sub);
 }
 
-.tok-rowlabel,
-.tok-colhead {
-   font-family: var(--mono);
-   font-size: 11px;
-   fill: var(--fg-muted);
+.tok-rowlabel {
+   font-family: var(--font-cond);
+   font-size: var(--chart-md);
+   fill: var(--fg-sub);
 }
 
 .tok-colhead {
+   font-family: var(--font-cond);
+   font-size: var(--chart-md);
    fill: var(--fg);
    font-weight: 500;
 }
@@ -1688,8 +1762,8 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .tok-endlabel {
-   font-family: var(--mono);
-   font-size: 11px;
+   font-family: var(--mono-comp);
+   font-size: var(--chart-sm);
    pointer-events: none;
    paint-order: stroke;
    stroke: var(--bg);
@@ -1702,10 +1776,10 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .tok-subhead {
-   font-family: var(--font-serif);
-   font-size: 1.05rem;
-   font-weight: 700;
-   margin: 1.25rem 0 0.4rem;
+   font-family: var(--font-serif-narrow);
+   font-size: var(--step-1);
+   font-weight: 500;
+   margin: 1.35rem 0 0.45rem;
 }
 
 .tok-subhead:first-child {
@@ -1714,14 +1788,20 @@ svg path.sankey-linkhit:focus-visible {
 
 .tok-legend-row {
    display: flex;
-   margin-block: 0.2em 0.6em;
+   margin-block: 0.2rem 0.65rem;
 }
 
 .tok-legend {
    display: flex;
-   align-items: baseline;
-   gap: 0.5em;
+   align-items: center;
+   gap: 0.6em;
    flex-wrap: wrap;
+}
+
+.tok-legend-title {
+   color: var(--fg-sub);
+   font-family: var(--font-narrow);
+   font-size: var(--step--1);
 }
 
 .tok-legend-bar {
@@ -1734,12 +1814,14 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .tok-legend-tick {
-   font-family: var(--mono);
+   font-family: var(--mono-comp);
+   font-size: var(--chart-sm);
+   color: var(--fg-sub);
 }
 
 .tok-cellval {
-   font-family: var(--mono);
-   font-size: 10.5px;
+   font-family: var(--mono-comp);
+   font-size: var(--chart-sm);
    pointer-events: none;
 }
 
@@ -1778,7 +1860,8 @@ svg path.sankey-linkhit:focus-visible {
 }
 
 .rates-lab label {
-   font-weight: 600;
+   font-family: var(--font-narrow);
+   font-weight: 500;
    font-size: var(--step--1);
 }
 
@@ -1796,6 +1879,8 @@ svg path.sankey-linkhit:focus-visible {
 
 .rates-hint {
    margin-block: 0.6em 0.5em;
+   font-family: var(--font-narrow);
+   font-style: italic;
 }
 
 /* Reduced motion, case by case (css guide: no global `*` duration kill switch). */

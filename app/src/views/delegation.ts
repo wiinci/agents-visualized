@@ -160,12 +160,12 @@ export function renderDelegation(
 	const draw = (width: number): void => {
 		host.replaceChildren()
 		const leaves = Math.max(1, root.leaves().length)
-		const height = Math.max(300, Math.min(820, leaves * 96 + 72))
+		const height = Math.max(360, Math.min(860, leaves * 118 + 90))
 		const m = {
-			top: 36,
-			right: Math.min(250, Math.max(175, width * 0.28)),
-			bottom: 32,
-			left: 36,
+			top: 52,
+			right: Math.min(290, Math.max(210, width * 0.3)),
+			bottom: 36,
+			left: 40,
 		}
 		const tree = d3
 			.tree<LoopNode>()
@@ -206,8 +206,8 @@ export function renderDelegation(
 					const sy = d.source.x
 					const tx = d.target.y
 					const ty = d.target.x
-					const dip = 30
-					return `M${sx},${sy} C${sx + 48},${sy + dip} ${tx - 48},${ty + dip} ${tx},${ty}`
+					const dip = 44
+					return `M${sx},${sy} C${sx + 38},${sy + dip} ${tx - 48},${ty + dip} ${tx},${ty}`
 				}
 				return (
 					d3
@@ -269,10 +269,10 @@ export function renderDelegation(
 					.append('text')
 					.attr('class', 'tree-label')
 					.attr('x', xOff)
-					.attr('y', -3)
+					.attr('y', -4)
 				txt
 					.append('tspan')
-					.attr('font-weight', '600')
+					.attr('font-weight', '500')
 					.text(
 						`${agentDisplayName(d.data.meta?.agent)} · ${fmtCompact(d.data.meta?.chars ?? 0)} chars`,
 					)
@@ -280,7 +280,7 @@ export function renderDelegation(
 					.append('tspan')
 					.attr('class', 'tree-sub')
 					.attr('x', xOff)
-					.attr('dy', '1.25em')
+					.attr('dy', '1.35em')
 					.text(
 						`${(d.data.meta?.status ?? 'worker').replace(/_/g, ' ')} · prompt ${fmtCompact(promptOf(d.data))}`,
 					)
@@ -290,13 +290,13 @@ export function renderDelegation(
 			// Task node: root label sits cleanly above its circle (never crossing the fan-out links);
 			// child task labels sit right of their circles with 2-line wrapping.
 			const isRoot = d.depth === 0
-			const lines = wrapLines(d.data.name, isRoot ? 32 : 34, 2)
+			const lines = wrapLines(d.data.name, isRoot ? 30 : 32, 2)
 			const tx = isRoot ? 0 : xOff
 			const yStart = isRoot
-				? -(rad + 22 + (lines.length - 1) * 14)
+				? -(rad + 28 + (lines.length - 1) * 17)
 				: lines.length > 1
-					? -11
-					: -3
+					? -16
+					: -4
 			const txt = gNode
 				.append('text')
 				.attr('class', 'tree-label')
@@ -306,14 +306,14 @@ export function renderDelegation(
 				txt
 					.append('tspan')
 					.attr('x', tx)
-					.attr('dy', li === 0 ? '0em' : '1.18em')
+					.attr('dy', li === 0 ? '0em' : '1.22em')
 					.text(ln)
 			})
 			txt
 				.append('tspan')
 				.attr('class', 'tree-sub')
 				.attr('x', tx)
-				.attr('dy', '1.25em')
+				.attr('dy', '1.32em')
 				.text(
 					[
 						d.data.meta?.status?.replace(/_/g, ' '),

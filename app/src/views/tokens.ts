@@ -389,12 +389,12 @@ export function renderTokens(
 
 	const drawHeat = (width: number): void => {
 		heatHost.replaceChildren()
-		const leftW = Math.min(230, Math.max(150, width * 0.3))
-		const availW = Math.max(180, width - leftW - 16)
-		const colW = Math.min(165, availW / agents.length)
-		const svgW = Math.min(width, leftW + colW * agents.length + 16)
-		const m = {top: 32, right: 12, bottom: 10, left: leftW}
-		const rowH = 34
+		const leftW = Math.min(295, Math.max(195, width * 0.34))
+		const availW = Math.max(210, width - leftW - 12)
+		const colW = Math.min(240, availW / agents.length)
+		const svgW = Math.min(width, leftW + colW * agents.length + 12)
+		const m = {top: 38, right: 10, bottom: 8, left: leftW}
+		const rowH = 40
 		const height = m.top + turns.length * rowH + m.bottom
 
 		const svg = d3
@@ -410,14 +410,14 @@ export function renderTokens(
 			svg
 				.append('circle')
 				.attr('cx', x + 7)
-				.attr('cy', m.top - 18)
-				.attr('r', 4.5)
+				.attr('cy', m.top - 19)
+				.attr('r', 5)
 				.attr('fill', agentColor(a))
 				.attr('aria-hidden', 'true')
 			svg
 				.append('text')
 				.attr('class', 'tok-colhead')
-				.attr('x', x + 16)
+				.attr('x', x + 18)
 				.attr('y', m.top - 14)
 				.text(agentDisplayName(a))
 		})
@@ -429,8 +429,8 @@ export function renderTokens(
 			const label = svg
 				.append('text')
 				.attr('class', 'tok-rowlabel')
-				.attr('x', m.left - 10)
-				.attr('y', y + rowH / 2 + 4)
+				.attr('x', m.left - 12)
+				.attr('y', y + rowH / 2 + 5)
 				.attr('text-anchor', 'end')
 				.text(`T${i + 1} · ${short}`)
 			label.append('title').text(`${full} · turn ${t.turnIndex + 1}`)
@@ -457,7 +457,7 @@ export function renderTokens(
 						'aria-label',
 						`${agentDisplayName(a)} in turn ${t.turnIndex + 1} of ${full}: ${fmtVal(shown)}${metric === 'cost' ? ' (assumed rate)' : ' (est.)'}`,
 					)
-				if (colW >= 46) {
+				if (colW >= 52) {
 					svg
 						.append('text')
 						.attr('class', 'tok-cellval')
@@ -531,7 +531,10 @@ export function renderTokens(
 		lineHost,
 	)
 
-	let lineGeom = {left: 64, step: 1, n: 1}
+	let lineGeom: {
+		cols: {left: number; right: number; step: number}[]
+		n: number
+	} = {cols: [{left: 64, right: 200, step: 1}], n: 1}
 	let showFocusFn: ((i: number) => void) | null = null
 	let hideFocusFn: (() => void) | null = null
 
@@ -552,8 +555,8 @@ export function renderTokens(
 		}
 
 		if (mode === 'lines') {
-			const m = {top: 18, right: 124, bottom: 38, left: 60}
-			const height = 300
+			const m = {top: 24, right: 140, bottom: 42, left: 64}
+			const height = 290
 			const yMax = d3.max(cumulativeTotals) ?? 1
 			const x = d3
 				.scaleLinear()
@@ -576,14 +579,14 @@ export function renderTokens(
 				.append('text')
 				.attr('class', 'axis-label')
 				.attr('x', width - m.right)
-				.attr('y', height - 6)
+				.attr('y', height - 5)
 				.attr('text-anchor', 'end')
 				.text('turn index →')
 			svg
 				.append('text')
 				.attr('class', 'axis-label')
 				.attr('x', m.left)
-				.attr('y', m.top - 4)
+				.attr('y', m.top - 8)
 				.text(cumLabel)
 
 			svg
@@ -641,11 +644,11 @@ export function renderTokens(
 				const last = n - 1
 				const rawY = y(s.cum[last] ?? 0)
 				const yPos = Math.max(m.top + 8, Math.min(height - m.bottom - 4, rawY))
-				const clash = placedY.some(py => Math.abs(py - yPos) < 13)
+				const clash = placedY.some(py => Math.abs(py - yPos) < 15)
 				const label = svg
 					.append('text')
 					.attr('class', 'tok-endlabel')
-					.attr('x', x(last) + 8)
+					.attr('x', x(last) + 10)
 					.attr('y', yPos + 4)
 					.attr('fill', agentColor(s.agent))
 					.text(agentDisplayName(s.agent))
@@ -701,7 +704,7 @@ export function renderTokens(
 			})
 			lineHost.append(svg.node()!)
 
-			lineGeom = {left: m.left, step, n}
+			lineGeom = {cols: [{left: m.left, right: width - m.right, step}], n}
 			showFocusFn = showFocus
 			hideFocusFn = hideFocus
 		} else {
@@ -716,17 +719,16 @@ export function renderTokens(
 				{label: 'All agents', color: 'var(--fg)', values: cumulativeTotals},
 			]
 			const yMax = d3.max(cumulativeTotals) ?? 1
-			const m = {top: 22, right: 96, bottom: 36, left: 60}
-			const titleH = 18
-			const plotH = 84
-			const gap = 16
+			const numCols = width >= 620 && panels.length > 2 ? 2 : 1
+			const numRows = Math.ceil(panels.length / numCols)
+			const colGap = numCols > 1 ? 26 : 0
+			const cellW = (width - colGap * (numCols - 1)) / numCols
+			const m = {top: 24, right: 78, bottom: 38, left: 56}
+			const titleH = 22
+			const plotH = 88
+			const rowGap = 24
 			const height =
-				m.top + panels.length * (titleH + plotH + gap) - gap + m.bottom
-			const x = d3
-				.scaleLinear()
-				.domain([0, Math.max(1, n - 1)])
-				.range([m.left, width - m.right])
-			const step = n > 1 ? x(1) - x(0) : width - m.left - m.right
+				m.top + numRows * (titleH + plotH + rowGap) - rowGap + m.bottom
 
 			const svg = d3
 				.create('svg')
@@ -742,33 +744,44 @@ export function renderTokens(
 				.append('text')
 				.attr('class', 'axis-label')
 				.attr('x', m.left)
-				.attr('y', m.top - 10)
+				.attr('y', m.top - 9)
 				.text(cumLabel)
-			svg
-				.append('text')
-				.attr('class', 'axis-label')
-				.attr('x', width - m.right)
-				.attr('y', height - 6)
-				.attr('text-anchor', 'end')
-				.text('turn index →')
 
-			const crosshairs: Sel<SVGLineElement>[] = []
+			const crosshairs: {
+				line: Sel<SVGLineElement>
+				x: d3.ScaleLinear<number, number>
+			}[] = []
 			const dotGroups: {
 				dots: Sel<SVGGElement>
+				x: d3.ScaleLinear<number, number>
 				y: d3.ScaleLinear<number, number>
 				p: Panel
 			}[] = []
+			const geomCols: {left: number; right: number; step: number}[] = []
 
 			panels.forEach((p, k) => {
-				const blockTop = m.top + k * (titleH + plotH + gap)
-				const titleY = blockTop + 10
+				const colIdx = k % numCols
+				const rowIdx = Math.floor(k / numCols)
+				const cellLeft = colIdx * (cellW + colGap)
+				const plotLeft = cellLeft + m.left
+				const plotRight = cellLeft + cellW - m.right
+				const x = d3
+					.scaleLinear()
+					.domain([0, Math.max(1, n - 1)])
+					.range([plotLeft, plotRight])
+				const step = n > 1 ? x(1) - x(0) : plotRight - plotLeft
+				if (rowIdx === 0)
+					geomCols.push({left: plotLeft, right: plotRight, step})
+
+				const blockTop = m.top + rowIdx * (titleH + plotH + rowGap)
+				const titleY = blockTop + 12
 				const top = blockTop + titleH
 				const bottom = top + plotH
 				const y = d3.scaleLinear().domain([0, yMax]).nice().range([bottom, top])
 
 				svg
 					.append('circle')
-					.attr('cx', m.left + 5)
+					.attr('cx', plotLeft + 5)
 					.attr('cy', titleY - 4)
 					.attr('r', 4.5)
 					.attr('fill', p.color)
@@ -776,14 +789,14 @@ export function renderTokens(
 				svg
 					.append('text')
 					.attr('class', 'tok-colhead')
-					.attr('x', m.left + 15)
+					.attr('x', plotLeft + 16)
 					.attr('y', titleY)
 					.text(p.label)
 
 				svg
 					.append('g')
 					.attr('class', 'axis')
-					.attr('transform', `translate(${m.left},0)`)
+					.attr('transform', `translate(${plotLeft},0)`)
 					.call(
 						d3
 							.axisLeft(y)
@@ -818,6 +831,19 @@ export function renderTokens(
 					.attr('fill', p.color)
 					.text(fmtValCompact(p.values[n - 1] ?? 0))
 
+				if (rowIdx === numRows - 1 || k + numCols >= panels.length) {
+					svg
+						.append('g')
+						.attr('class', 'axis')
+						.attr('transform', `translate(0,${bottom})`)
+						.call(
+							d3
+								.axisBottom(x)
+								.ticks(n)
+								.tickFormat(d => `T${(d as number) + 1}`),
+						)
+				}
+
 				const cross = svg
 					.append('line')
 					.attr('class', 'tok-crosshair')
@@ -825,16 +851,16 @@ export function renderTokens(
 					.attr('y2', bottom)
 					.style('display', 'none')
 				const dots = svg.append('g').style('display', 'none')
-				crosshairs.push(cross)
-				dotGroups.push({dots, y, p})
+				crosshairs.push({line: cross, x})
+				dotGroups.push({dots, x, y, p})
 
 				turns.forEach((t, i) => {
 					svg
 						.append('rect')
 						.attr('class', 'tok-hit')
-						.attr('x', m.left + (n > 1 ? step * i - step / 2 : 0))
+						.attr('x', plotLeft + (n > 1 ? step * i - step / 2 : 0))
 						.attr('y', top)
-						.attr('width', n > 1 ? step : width - m.left - m.right)
+						.attr('width', n > 1 ? step : plotRight - plotLeft)
 						.attr('height', plotH)
 						.attr('fill', 'transparent')
 						.attr('data-hit', 'turn')
@@ -848,25 +874,22 @@ export function renderTokens(
 				})
 			})
 
-			const lastBottom =
-				m.top + (panels.length - 1) * (titleH + plotH + gap) + titleH + plotH
 			svg
-				.append('g')
-				.attr('class', 'axis')
-				.attr('transform', `translate(0,${lastBottom})`)
-				.call(
-					d3
-						.axisBottom(x)
-						.ticks(n)
-						.tickFormat(d => `T${(d as number) + 1}`),
-				)
+				.append('text')
+				.attr('class', 'axis-label')
+				.attr('x', width - m.right)
+				.attr('y', height - 4)
+				.attr('text-anchor', 'end')
+				.text('turn index →')
 
 			const showFocus = (i: number): void => {
-				const cx = x(n > 1 ? i : 0)
-				crosshairs.forEach(c =>
-					c.attr('x1', cx).attr('x2', cx).style('display', null),
-				)
-				dotGroups.forEach(({dots, y, p}) => {
+				const idx = n > 1 ? i : 0
+				crosshairs.forEach(({line, x}) => {
+					const cx = x(idx)
+					line.attr('x1', cx).attr('x2', cx).style('display', null)
+				})
+				dotGroups.forEach(({dots, x, y, p}) => {
+					const cx = x(idx)
 					dots
 						.style('display', null)
 						.selectAll('circle')
@@ -881,12 +904,12 @@ export function renderTokens(
 				})
 			}
 			const hideFocus = (): void => {
-				crosshairs.forEach(c => c.style('display', 'none'))
+				crosshairs.forEach(({line}) => line.style('display', 'none'))
 				dotGroups.forEach(({dots}) => dots.style('display', 'none'))
 			}
 
 			lineHost.append(svg.node()!)
-			lineGeom = {left: m.left, step, n}
+			lineGeom = {cols: geomCols, n}
 			showFocusFn = showFocus
 			hideFocusFn = hideFocus
 		}
@@ -897,9 +920,15 @@ export function renderTokens(
 				const svg = lineHost.querySelector('svg')
 				if (!svg) return
 				const [xm] = d3.pointer(e, svg)
-				const {left, step, n} = lineGeom
+				const {cols, n} = lineGeom
+				const col =
+					cols.find(c => xm >= c.left - 12 && xm <= c.right + 12) ?? cols[0]
+				if (!col) return
 				showFocusFn?.(
-					Math.max(0, Math.min(n - 1, Math.round((xm - left) / (step || 1)))),
+					Math.max(
+						0,
+						Math.min(n - 1, Math.round((xm - col.left) / (col.step || 1))),
+					),
 				)
 			})
 			lineHost.addEventListener('pointerleave', () => hideFocusFn?.())
