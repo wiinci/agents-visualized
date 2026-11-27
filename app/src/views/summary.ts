@@ -187,7 +187,7 @@ export function renderSummary(
 				},
 				actions: [
 					{
-						label: 'Inspect in Context Growth ↑',
+						label: 'Inspect in context growth ↑',
 						onClick: () => {
 							document
 								.getElementById('context')

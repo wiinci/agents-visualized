@@ -65,7 +65,13 @@ export function renderSankey(
 	const {nodes, links} = ds.flows
 	container.replaceChildren()
 	if (!nodes.length) {
-		container.append(el('p', {class: 'muted'}, 'No flow data.'))
+		container.append(
+			el(
+				'p',
+				{class: 'muted'},
+				'Stage transitions appear here once a trace records at least one step.',
+			),
+		)
 		return () => {}
 	}
 
@@ -109,7 +115,7 @@ export function renderSankey(
 			'aria-pressed': 'false',
 			title: 'Reveal minor loop-back transitions at rest',
 		},
-		`All loop-backs (${fmtInt(back.length)})`,
+		`Show all loop-backs (${fmtInt(back.length)})`,
 	)
 	if (minorBackCount === 0) backToggle.hidden = true
 
@@ -684,7 +690,7 @@ export function renderSankey(
 			.attr('r', d => radiusOf(d.id).r)
 			.attr('fill', d => (radiusOf(d.id).hollow ? 'none' : stageColor(d.stage)))
 			.attr('stroke', d => stageColor(d.stage))
-		node.append('circle').attr('class', 'sankey-hit').attr('r', 9)
+		node.append('circle').attr('class', 'sankey-hit').attr('r', 12)
 		node
 			.append('text')
 			.attr('class', 'sankey-label')

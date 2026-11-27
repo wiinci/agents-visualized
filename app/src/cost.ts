@@ -140,119 +140,26 @@ export function onRatesChange(
 // ── Rates popover (global toolbar) ──────────────────────────────────────────
 
 const CLASS_LABEL: Record<AgentClass, string> = {
-	user: 'user',
-	orchestrator: 'orchestrator',
-	worker: 'worker (any worker:*)',
-	other: 'other',
+	user: 'User',
+	orchestrator: 'Orchestrator',
+	worker: 'Worker (any worker:*)',
+	other: 'Other',
 }
 
 /**
- * Mount the "Rates" button + popover into the site header tools. Native
- * `popover="auto"` where supported (light dismiss + Esc for free); a
- * click-toggled fallback otherwise.
- * Inputs follow the forms guide: visible labels, min/step constraints, and
- * :user-invalid styling that only appears after the user edits a field.
+ * Mount the "Edit rates" button + popover into the plate toolbar. Native
+ * `popover="auto"` where supported (light dismiss + Esc for free) anchored to
+ * its trigger button via CSS `position-area` (with a `getBoundingClientRect()`
+ * fallback when CSS anchor positioning is unavailable).
  */
-export function mountRatesControl(host: HTMLElement): void {
+export function mountRatesControl(host: HTMLElement): () => void {
 	const supportsPopover = 'popover' in HTMLElement.prototype
+	const supportsAnchor =
+		typeof CSS !== 'undefined' &&
+		typeof CSS.supports === 'function' &&
+		CSS.supports('position-area: bottom')
 	const pop = el('div', {id: 'rates-pop', class: 'rates-pop'})
 	if (supportsPopover) pop.setAttribute('popover', 'auto')
-
-	const form = el('form', {novalidate: ''})
-	const buildFields = (): void => {
-		// Rebuilt in place on reset so the button/popover pairing stays stable.
-		form.replaceChildren()
-		form.append(
-			el(
-				'p',
-				{class: 'rates-intro'},
-				el('strong', {}, 'Modeled rates, not billing data.'),
-				' Dollar figures multiply estimated tokens (chars ÷ 4) by the rates below.',
-			),
-		)
-		form.append(
-			rowFor(
-				'default rate',
-				'USD per 1M tokens, used when a class has no override',
-				getRates().default,
-				v => {
-					if (v === null) return
-					const r = getRates()
-					persist({...r, default: v})
-				},
-			),
-		)
-		for (const cls of AGENT_CLASSES) {
-			const override = getRates().overrides[cls]
-			form.append(
-				rowFor(
-					`${CLASS_LABEL[cls]} rate`,
-					override === undefined
-						? 'inherits default'
-						: `override: ${fmtRate(override)}`,
-					override ?? getRates().default,
-					v => {
-						const r = getRates()
-						const overrides = {...r.overrides}
-						if (v === null) delete overrides[cls]
-						else overrides[cls] = v
-						persist({...r, overrides})
-					},
-				),
-			)
-		}
-	}
-	const rowFor = (
-		label: string,
-		hint: string,
-		value: number,
-		onInput: (v: number | null) => void,
-	): HTMLElement => {
-		const wrap = el('div', {class: 'rates-row'})
-		const id = `rate-${label.replace(/[^a-z]+/gi, '-')}`
-		const input = el('input', {
-			type: 'number',
-			id,
-			min: '0',
-			step: '0.01',
-			inputmode: 'decimal',
-			value: String(value),
-		})
-		input.addEventListener('input', () => {
-			const v = input.valueAsNumber
-			onInput(Number.isFinite(v) && v >= 0 ? v : null)
-		})
-		const lab = el('label', {for: id}, label)
-		wrap.append(
-			el(
-				'div',
-				{class: 'rates-lab'},
-				lab,
-				el('span', {class: 'muted small'}, hint),
-			),
-			input,
-		)
-		return wrap
-	}
-	buildFields()
-	const resetBtn = el(
-		'button',
-		{type: 'button', class: 'btn'},
-		'Reset to default',
-	)
-	resetBtn.addEventListener('click', () => {
-		persist({default: DEFAULT_RATE, overrides: {}})
-		buildFields() // refresh inputs to the reset values
-	})
-	form.append(
-		el(
-			'p',
-			{class: 'muted small rates-hint'},
-			'Blank or invalid entries fall back to the default rate.',
-		),
-		resetBtn,
-	)
-	pop.append(form)
 
 	const btn = el(
 		'button',
@@ -265,13 +172,123 @@ export function mountRatesControl(host: HTMLElement): void {
 		},
 		`Edit rates (${fmtRate(getRates().default)})`,
 	)
+
+	const form = el('form', {novalidate: ''})
+	const fieldsWrap = el('div', {class: 'rates-fields'})
+	const rowFor = (
+		label: string,
+		hint: string,
+		value: number,
+		onInput: (v: number | null) => void,
+	): HTMLElement => {
+		const wrap = el('div', {class: 'rates-row'})
+		const id = `rate-${label
+			.toLowerCase()
+			.replace(/[^a-z]+/g, '-')
+			.replace(/^-|-$/g, '')}`
+		const input = el('input', {
+			type: 'number',
+			id,
+			min: '0',
+			step: '0.01',
+			inputmode: 'decimal',
+			value: String(value),
+		})
+		const hintEl = el('span', {class: 'muted small'}, hint)
+		input.addEventListener('input', () => {
+			const v = input.valueAsNumber
+			onInput(Number.isFinite(v) && v >= 0 ? v : null)
+		})
+		const lab = el('label', {for: id}, label)
+		wrap.append(el('div', {class: 'rates-lab'}, lab, hintEl), input)
+		return wrap
+	}
+
+	const buildFields = (): void => {
+		fieldsWrap.replaceChildren(
+			rowFor(
+				'Default rate',
+				'USD per 1M tokens when no class override is set',
+				getRates().default,
+				v => {
+					if (v === null) return
+					const r = getRates()
+					persist({...r, default: v})
+				},
+			),
+			...AGENT_CLASSES.map(cls => {
+				const override = getRates().overrides[cls]
+				return rowFor(
+					`${CLASS_LABEL[cls]} rate`,
+					override === undefined
+						? 'Inherits default'
+						: `Override: ${fmtRate(override)}`,
+					override ?? getRates().default,
+					v => {
+						const r = getRates()
+						const overrides = {...r.overrides}
+						if (v === null) delete overrides[cls]
+						else overrides[cls] = v
+						persist({...r, overrides})
+					},
+				)
+			}),
+		)
+	}
+	buildFields()
+
+	const resetBtn = el(
+		'button',
+		{type: 'button', class: 'btn'},
+		'Reset to default',
+	)
+	resetBtn.addEventListener('click', () => {
+		persist({default: DEFAULT_RATE, overrides: {}})
+		buildFields()
+	})
+	form.append(
+		el(
+			'p',
+			{class: 'rates-intro'},
+			el('strong', {}, 'Modeled rates, not billing data.'),
+			' Dollar figures multiply estimated tokens (chars ÷ 4) by the rates below.',
+		),
+		fieldsWrap,
+		el(
+			'p',
+			{class: 'muted small rates-hint'},
+			'Blank or invalid entries fall back to the default rate.',
+		),
+		resetBtn,
+	)
+	pop.append(form)
+
+	const positionFallback = (): void => {
+		if (supportsAnchor) return
+		const rect = btn.getBoundingClientRect()
+		const popW = Math.min(340, window.innerWidth * 0.92)
+		const left = Math.max(
+			12,
+			Math.min(rect.left, window.innerWidth - popW - 12),
+		)
+		const top = Math.min(rect.bottom + 6, window.innerHeight - 160)
+		pop.style.left = `${Math.round(left)}px`
+		pop.style.top = `${Math.round(top)}px`
+	}
+
 	if (supportsPopover) {
 		btn.setAttribute('popovertarget', 'rates-pop')
+		pop.addEventListener('beforetoggle', ev => {
+			if ((ev as ToggleEvent).newState === 'open') positionFallback()
+		})
 	} else {
 		btn.addEventListener('click', () => {
 			const open = pop.classList.toggle('is-open')
 			btn.setAttribute('aria-expanded', String(open))
-			if (open) pop.focus()
+			if (open) {
+				positionFallback()
+				pop.focus()
+			}
 		})
 		pop.setAttribute('tabindex', '-1')
 	}
@@ -285,5 +302,12 @@ export function mountRatesControl(host: HTMLElement): void {
 			),
 		),
 	)
+
+	const updateBtnLabel = (): void => {
+		btn.textContent = `Edit rates (${fmtRate(getRates().default)})`
+	}
+	const disposeLabel = onRatesChange(btn, updateBtnLabel)
+
 	host.append(btn, pop)
+	return disposeLabel
 }

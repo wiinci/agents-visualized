@@ -28,7 +28,13 @@ export function renderContext(
 		t => t.steps.length > 0,
 	)
 	if (!threads.length) {
-		container.append(el('p', {class: 'muted'}, 'No steps with context data.'))
+		container.append(
+			el(
+				'p',
+				{class: 'muted'},
+				'Context growth curves appear here once a trace records steps with context sizes.',
+			),
+		)
 		return () => {}
 	}
 
@@ -179,7 +185,7 @@ export function renderContext(
 	const foot = el(
 		'footer',
 		{class: 'plate-foot'},
-		`Lines track cumulative context at each step; faint bars below show each step’s own size, and vertical dashed rules mark turn breaks. Switch to "Fit each thread" to inspect quieter threads up close.`,
+		`Lines track cumulative context at each step; faint bars below show each step’s own size, and vertical dashed rules mark turn breaks. Switch to “Fit each thread” to inspect quieter threads up close.`,
 	)
 	container.append(toolbar, layout, foot)
 

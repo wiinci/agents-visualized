@@ -271,6 +271,8 @@ export function renderDelegation(
 					`${nodeAriaLabel(d.data)}, prompt ${fmtInt(promptOf(d.data))} characters`,
 			)
 
+		node.append('title').text(d => d.data.name)
+
 		node
 			.append('circle')
 			.attr('r', d => r(promptOf(d.data)))

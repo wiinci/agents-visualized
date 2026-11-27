@@ -322,6 +322,13 @@ export function renderHierarchy(
 			})
 
 		cell
+			.append('title')
+			.text(
+				d =>
+					`${displayNameOf(d.data)} (${fmtInt(d.data.meta?.chars ?? d.value ?? 0)} chars)`,
+			)
+
+		cell
 			.append('rect')
 			.attr('width', d => Math.max(1, d.y1 - d.y0 - 1))
 			.attr('height', d =>

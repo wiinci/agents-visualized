@@ -68,7 +68,7 @@ const PLATES: PlateDef[] = [
 		navNum: 'I',
 		navLabel: 'Blueprint',
 		kickerNum: 'Plate I',
-		kickerDomain: 'The Blueprint',
+		kickerDomain: 'The blueprint',
 		kickerTag: 'Reference spec',
 		title: ds =>
 			`${fmtInt(ds.loopModel.loops.length)} operating loops define how Obvious is meant to run`,
@@ -80,9 +80,9 @@ const PLATES: PlateDef[] = [
 	{
 		id: 'sankey',
 		navNum: 'II',
-		navLabel: 'Execution Flow',
+		navLabel: 'Execution flow',
 		kickerNum: 'Plate II',
-		kickerDomain: 'Execution Flow',
+		kickerDomain: 'Execution flow',
 		kickerTag: 'Recorded trace',
 		title: ds => {
 			const {back} = splitCycles(ds.flows.nodes, ds.flows.links)
@@ -108,7 +108,7 @@ const PLATES: PlateDef[] = [
 		navNum: 'III',
 		navLabel: 'Hierarchy',
 		kickerNum: 'Plate III',
-		kickerDomain: 'Transcript Bulk',
+		kickerDomain: 'Transcript bulk',
 		title: ds => {
 			const totalChars = d3.sum(ds.stats.agents, a => a.chars)
 			const {charPct, hasWorkers} = workerShare(ds)
@@ -126,7 +126,7 @@ const PLATES: PlateDef[] = [
 		navNum: 'IV',
 		navLabel: 'Delegation',
 		kickerNum: 'Plate IV',
-		kickerDomain: 'Task Fan-Out',
+		kickerDomain: 'Task fan-out',
 		title: ds => {
 			const {tasks, workers} = countDelegation(ds)
 			return `One brief splits into ${fmtInt(tasks)} scoped tasks and ${fmtInt(workers)} worker thread${workers === 1 ? '' : 's'}`
@@ -141,7 +141,7 @@ const PLATES: PlateDef[] = [
 		navNum: 'V',
 		navLabel: 'Context',
 		kickerNum: 'Plate V',
-		kickerDomain: 'Context Growth',
+		kickerDomain: 'Context growth',
 		title: ds => {
 			const peak = d3.max(ds.stats.turns, t => t.contextCharsAtEnd) ?? 0
 			return `Inside the busiest thread, context swells to ${fmtCompact(peak)} characters`
@@ -154,13 +154,13 @@ const PLATES: PlateDef[] = [
 	{
 		id: 'tokens',
 		navNum: 'VI',
-		navLabel: 'Tokens & Cost',
+		navLabel: 'Tokens & cost',
 		kickerNum: 'Plate VI',
-		kickerDomain: 'Token Footprint',
+		kickerDomain: 'Token footprint',
 		title: ds => {
 			const {tokenPct, hasWorkers} = workerShare(ds)
 			return hasWorkers
-				? `Worker threads drive ${tokenPct} of the run's estimated tokens`
+				? `Worker threads drive ${tokenPct} of the run’s estimated tokens`
 				: `Estimated token footprint across ${fmtInt(ds.stats.turns.length)} turns`
 		},
 		deck: () =>
@@ -173,7 +173,7 @@ const PLATES: PlateDef[] = [
 		navNum: 'VII',
 		navLabel: 'Ledger',
 		kickerNum: 'Appendix',
-		kickerDomain: 'Full Ledger',
+		kickerDomain: 'Full ledger',
 		title: () => 'Every agent, tool call, and turn in numbers',
 		deck: () =>
 			'The complete tabular breakdown behind the charts above: per-agent totals, tool call counts and errors, and a turn-by-turn log.',
@@ -201,14 +201,26 @@ function initTheme(): void {
 	const opposite = () => (systemDark.matches ? 'light' : 'dark')
 	const label = (s: string) => `${s === 'dark' ? 'Dark' : 'Light'} (pinned)`
 
-	const apply = (pinned: 'light' | 'dark' | null) => {
+	const apply = (
+		pinned: 'light' | 'dark' | null,
+		disableTransitions = false,
+	) => {
+		const root = document.documentElement
+		if (disableTransitions) {
+			root.classList.add('theme-switching')
+		}
 		const value = pinned ?? 'light dark'
-		document.documentElement.style.colorScheme = value
+		root.style.colorScheme = value
 		if (meta) meta.content = value
-		document.documentElement.dataset.theme = pinned ?? 'auto'
+		root.dataset.theme = pinned ?? 'auto'
 		pinOpt.value = pinned ?? opposite()
 		pinOpt.textContent = label(pinOpt.value)
 		sel.value = pinned ?? 'auto'
+		if (disableTransitions) {
+			// Force synchronous style recalc while transitions are suppressed, then restore.
+			void root.offsetWidth
+			root.classList.remove('theme-switching')
+		}
 	}
 
 	const savedRaw = localStorage.getItem('theme')
@@ -217,15 +229,15 @@ function initTheme(): void {
 	sel.addEventListener('change', () => {
 		if (sel.value === 'auto') {
 			localStorage.removeItem('theme')
-			apply(null)
+			apply(null, true)
 			return
 		}
 		const pin = sel.value === 'dark' ? 'dark' : 'light'
 		localStorage.setItem('theme', pin)
-		apply(pin)
+		apply(pin, true)
 	})
 	systemDark.addEventListener('change', () => {
-		if (document.documentElement.dataset.theme === 'auto') apply(null)
+		if (document.documentElement.dataset.theme === 'auto') apply(null, true)
 	})
 }
 
@@ -321,15 +333,15 @@ function renderSource(loaded: LoadedDataset): void {
 	byId<HTMLParagraphElement>('source-text').textContent = data.source.storage
 	const meta = byId<HTMLDListElement>('source-meta')
 	const rows: [string, string][] = [
-		['generated', fmtTime(data.generatedAt)],
-		['loaded from', url],
-		['project', data.source.projectId],
+		['Generated', fmtTime(data.generatedAt)],
+		['Loaded from', url],
+		['Project', data.source.projectId],
 		[
-			'threads',
+			'Threads',
 			`${fmtInt(data.source.threadIds.length)} (${data.source.threadIds.join(', ')})`,
 		],
-		['messages', fmtInt(data.source.messageCount)],
-		['schema version', String(data.version)],
+		['Messages', fmtInt(data.source.messageCount)],
+		['Schema version', String(data.version)],
 	]
 	meta.replaceChildren(
 		...rows.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]),
@@ -534,6 +546,7 @@ async function main(): Promise<void> {
 	} catch (e) {
 		const banner = byId<HTMLDivElement>('banner')
 		banner.hidden = false
+		banner.setAttribute('role', 'alert')
 		banner.classList.add('is-error')
 		banner.textContent = `Could not load any dataset: ${e instanceof Error ? e.message : String(e)}`
 		byId<HTMLParagraphElement>('source-text').textContent = '—'

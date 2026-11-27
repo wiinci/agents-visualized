@@ -74,10 +74,10 @@ export function renderLoopModel(
 				},
 				rows: [
 					[
-						'trace kinds',
+						'Trace kinds',
 						p.observedKinds.length
 							? p.observedKinds.map(k => KIND_LABEL[k] ?? k).join(', ')
-							: 'conceptual only',
+							: 'Conceptual only',
 					],
 				],
 				text: {
@@ -100,13 +100,13 @@ export function renderLoopModel(
 				title: `${fromName} → ${toName}`,
 				accent:
 					e.kind === 'repeat'
-						? '#9a4a12'
+						? 'var(--loop-repeat)'
 						: e.kind === 'exit'
-							? '#15803d'
+							? 'var(--loop-exit)'
 							: 'var(--fg-muted)',
 				rows: [
-					['loop', loop.name],
-					['condition', e.label ?? 'unconditional step'],
+					['Loop', loop.name],
+					['Condition', e.label ?? 'Unconditional step'],
 				],
 			})
 		})
