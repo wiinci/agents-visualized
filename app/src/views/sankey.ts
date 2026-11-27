@@ -446,8 +446,9 @@ export function renderSankey(
 	let viewport = {w: 0, h: 0}
 	let lastHoverTarget: ProximityTarget | null = null
 
-	const draw = (width: number): void => {
-		lastWidth = width
+	const draw = (availableWidth: number): void => {
+		lastWidth = availableWidth
+		const width = Math.max(760, availableWidth)
 		host.replaceChildren()
 		const height = Math.max(460, Math.min(800, nodes.length * 44))
 		const labelOf = (n: FlowNode): string =>

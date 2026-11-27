@@ -303,11 +303,29 @@ export function mountRatesControl(host: HTMLElement): () => void {
 		),
 	)
 
+	const onDismissKey = (event: KeyboardEvent): void => {
+		if (event.key !== 'Escape') return
+		const open = supportsPopover
+			? pop.matches(':popover-open')
+			: pop.classList.contains('is-open')
+		if (!open) return
+		event.preventDefault()
+		event.stopPropagation()
+		if (supportsPopover) pop.hidePopover()
+		else pop.classList.remove('is-open')
+		btn.setAttribute('aria-expanded', 'false')
+		btn.focus({preventScroll: true})
+	}
+	document.addEventListener('keydown', onDismissKey, true)
+
 	const updateBtnLabel = (): void => {
 		btn.textContent = `Edit rates (${fmtRate(getRates().default)})`
 	}
 	const disposeLabel = onRatesChange(btn, updateBtnLabel)
 
 	host.append(btn, pop)
-	return disposeLabel
+	return () => {
+		document.removeEventListener('keydown', onDismissKey, true)
+		disposeLabel()
+	}
 }

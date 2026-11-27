@@ -39,8 +39,10 @@ export function renderContext(
 	}
 
 	const threadNames = buildThreadNames(ds)
-	const nameOf = (tid: string, fallback: string) =>
+	const fullNameOf = (tid: string, fallback: string) =>
 		threadNames.get(tid)?.full ?? fallback
+	const shortNameOf = (tid: string, fallback: string) =>
+		threadNames.get(tid)?.short ?? fallback
 
 	const globalMax =
 		d3.max(threads, t =>
@@ -83,7 +85,7 @@ export function renderContext(
 	const allStepIds: string[] = []
 	for (const t of threads) {
 		const tid = t.thread.meta?.threadId ?? t.thread.id
-		const lbl = nameOf(tid, t.thread.name)
+		const lbl = fullNameOf(tid, t.thread.name)
 		const ids = t.steps.map(s => s.node.id)
 		allStepIds.push(...ids)
 		for (const s of t.steps) {
@@ -110,7 +112,9 @@ export function renderContext(
 			const last = t.steps[t.steps.length - 1]
 			const end =
 				(last?.node.meta?.contextChars ?? 0) + (last?.node.meta?.chars ?? 0)
-			return end > best.end ? {thread: nameOf(tid, t.thread.name), end} : best
+			return end > best.end
+				? {thread: shortNameOf(tid, t.thread.name), end}
+				: best
 		},
 		{thread: '', end: -1},
 	)
@@ -195,7 +199,7 @@ export function renderContext(
 
 	for (const t of threads) {
 		const tid = t.thread.meta?.threadId ?? t.thread.id
-		const threadTitle = nameOf(tid, t.thread.name)
+		const threadTitle = shortNameOf(tid, t.thread.name)
 		const agent =
 			t.thread.meta?.agent ??
 			t.steps.find(s => s.node.meta?.agent !== 'user')?.node.meta?.agent

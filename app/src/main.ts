@@ -73,7 +73,7 @@ const PLATES: PlateDef[] = [
 		title: ds =>
 			`${fmtInt(ds.loopModel.loops.length)} operating loops define how Obvious is meant to run`,
 		deck: () =>
-			'Drawn from Obvious operating instructions rather than a live run, these five cycles lay out the intended playbook: handling a turn, delegating to workers, loading skills, carrying memory forward, and pausing for human approval. Everything from Plate II onward comes from a recorded trace.',
+			'The reference spec behind the trace: five loops for handling a turn, delegation, skills, memory, and human approval. From Plate II onward, every figure comes from the recorded run.',
 		render: renderLoopModel,
 		defer: false,
 	},
@@ -406,6 +406,29 @@ async function renderEssay(ds: LoopsDataset): Promise<void> {
 	const mountById = new Map<string, () => void>()
 	const mounted = new Set<string>()
 	const initialHash = location.hash.slice(1)
+	const mountThrough = (id: string): void => {
+		for (const plate of PLATES) {
+			mountById.get(plate.id)?.()
+			if (plate.id === id) break
+		}
+	}
+	const scrollAfterLayout = (target: HTMLElement, behavior: ScrollBehavior) => {
+		let previousHeight = -1
+		let stableFrames = 0
+		let frames = 0
+		const settle = () => {
+			const height = document.documentElement.scrollHeight
+			stableFrames = height === previousHeight ? stableFrames + 1 : 0
+			previousHeight = height
+			frames += 1
+			if (stableFrames >= 2 || frames >= 30) {
+				target.scrollIntoView({behavior})
+				return
+			}
+			requestAnimationFrame(settle)
+		}
+		requestAnimationFrame(settle)
+	}
 
 	// Open the Colophon <details> automatically when jumping to #colophon.
 	document
@@ -424,8 +447,14 @@ async function renderEssay(ds: LoopsDataset): Promise<void> {
 			el('span', {class: 'chapter-link-num'}, p.navNum),
 			p.navLabel,
 		)
-		link.addEventListener('click', () => {
-			mountById.get(p.id)?.()
+		link.addEventListener('click', event => {
+			event.preventDefault()
+			mountThrough(p.id)
+			history.pushState(null, '', `#${p.id}`)
+			scrollAfterLayout(
+				document.getElementById(p.id) as HTMLElement,
+				prefersReducedMotion() ? 'instant' : 'smooth',
+			)
 		})
 		navLinks.push(link)
 		navHost.append(link)
@@ -462,6 +491,7 @@ async function renderEssay(ds: LoopsDataset): Promise<void> {
 		const mount = () => {
 			if (mounted.has(p.id)) return
 			mounted.add(p.id)
+			section.classList.remove('plate-deferred')
 			try {
 				const dispose = p.render(host, ds)
 				if (dispose) disposers.push(dispose)
@@ -479,9 +509,13 @@ async function renderEssay(ds: LoopsDataset): Promise<void> {
 		mountById.set(p.id, mount)
 	}
 
-	// Mount Plates I & II (plus any deep-linked plate) eagerly, yielding between tasks.
+	// Mount Plates I & II (and everything before a deep link) eagerly, yielding between tasks.
 	const eagerIds = new Set(['loops', 'sankey'])
-	if (initialHash && mountById.has(initialHash)) eagerIds.add(initialHash)
+	const initialIndex = PLATES.findIndex(plate => plate.id === initialHash)
+	if (initialIndex >= 0) {
+		for (const plate of PLATES.slice(0, initialIndex + 1))
+			eagerIds.add(plate.id)
+	}
 	for (const id of eagerIds) {
 		mountById.get(id)?.()
 		await yieldToMain()
@@ -517,11 +551,7 @@ async function renderEssay(ds: LoopsDataset): Promise<void> {
 			if (det) det.open = true
 		}
 		const target = document.getElementById(initialHash)
-		if (target) {
-			requestAnimationFrame(() =>
-				target.scrollIntoView({behavior: 'instant' as ScrollBehavior}),
-			)
-		}
+		if (target) scrollAfterLayout(target, 'instant')
 	}
 
 	window.addEventListener(
